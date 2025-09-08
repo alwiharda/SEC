@@ -35,11 +35,11 @@ h1, h2, h3 {
 # ============================
 # 3. LOAD DATA
 # ============================
-FILE = "prediksi permintaan (3).xlsx"
+FILE = "prediksi permintaan (3).xlsx"   # <── nama file sesuai data asli
 try:
     df = pd.read_excel(FILE)
 except FileNotFoundError:
-    st.error(f"❌ File `{FILE}` tidak ditemukan. Pastikan sudah diunggah.")
+    st.error(f"❌ File `{FILE}` tidak ditemukan. Pastikan sudah diunggah ke folder yang sama dengan app.py.")
     st.stop()
 
 # ============================
@@ -55,10 +55,10 @@ df_prov = df[df["Provinsi"] == provinsi].copy()
 
 # hitung surplus jika belum ada
 if "Surplus" not in df_prov.columns:
-    if "Produksi" in df_prov.columns and "Konsumsi" in df_prov.columns:
-        df_prov["Surplus"] = df_prov["Produksi"] - df_prov["Konsumsi"]
+    if "produksi" in df_prov.columns and "konsumsi (ton)" in df_prov.columns:
+        df_prov["Surplus"] = df_prov["produksi"] - df_prov["konsumsi (ton)"]
     else:
-        st.error("❌ Data tidak punya kolom Produksi/Konsumsi untuk hitung surplus.")
+        st.error("❌ Data tidak punya kolom 'produksi' atau 'konsumsi (ton)'.")
         st.stop()
 
 # ============================
@@ -80,4 +80,3 @@ st.pyplot(fig)
 # ============================
 st.subheader("📊 Data Prediksi")
 st.dataframe(df_prov.reset_index(drop=True))
-
