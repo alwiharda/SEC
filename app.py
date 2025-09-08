@@ -23,12 +23,20 @@ df_hist["Tahun"] = df_hist["Tahun"].astype(int)
 df_fore = pd.read_excel(FILE_FORE)
 df_fore.columns = df_fore.columns.str.strip()
 
-id_vars = ["Provinsi", "Komoditas"]  # kolom identitas tetap
-value_vars = [c for c in df_fore.columns if "_" in c]  # kolom tahun
+# Rename Surplus & Status supaya tidak bentrok
+rename_map = {}
+for c in df_fore.columns:
+    if c.startswith("Surplus_"):
+        rename_map[c] = c.replace("Surplus_", "SPS_")
+    if c.startswith("Status_"):
+        rename_map[c] = c.replace("Status_", "STS_")
+df_fore = df_fore.rename(columns=rename_map)
 
+# Reshape wide → long
+id_vars = ["Provinsi", "Komoditas"]
 df_long = pd.wide_to_long(
     df_fore,
-    stubnames=["Konsumsi", "Produksi", "Surplus", "Status"],
+    stubnames=["Konsumsi", "Produksi", "SPS", "STS"],
     i=id_vars,
     j="Tahun",
     sep="_",
@@ -37,16 +45,24 @@ df_long = pd.wide_to_long(
 
 df_long["Tahun"] = df_long["Tahun"].astype(int)
 
-# Gabungkan historis + forecast
-df = pd.concat([df_hist[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]],
-                df_long[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]]],
-               ignore_index=True)
+# Kembalikan nama kolom standar
+df_long = df_long.rename(columns={"SPS": "Surplus", "STS": "Status"})
 
-# Hitung surplus jika belum ada
-if "Surplus" not in df.columns:
+# Gabungkan historis + forecast
+df = pd.concat(
+    [
+        df_hist[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]],
+        df_long[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi", "Surplus", "Status"]]
+    ],
+    ignore_index=True
+)
+
+# Hitung surplus jika kosong
+if "Surplus" not in df.columns or df["Surplus"].isnull().all():
     df["Surplus"] = df["Produksi"] - df["Konsumsi"]
 
-df["Status"] = df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit")
+if "Status" not in df.columns or df["Status"].isnull().all():
+    df["Status"] = df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit")
 
 # ---------- 2. STREAMLIT UI ----------
 st.set_page_config(page_title="Prediksi Surplus/Defisit", layout="wide")
