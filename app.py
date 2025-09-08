@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # =============================
 # 1. LOAD DATA
 # =============================
-FILE_HIST = "prediksi_permintaan (3).xlsx"
+FILE_HIST = "prediksi permintaan (3).xlsx"
 FILE_FORE = "forecast_5th_beras.xlsx"
 
 @st.cache_data
@@ -87,3 +87,4 @@ st.pyplot(fig)
 # =============================
 st.markdown("### 📑 Data Lengkap 2018–2028")
 st.dataframe(df_filtered.reset_index(drop=True))
+
