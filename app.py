@@ -9,36 +9,43 @@ import matplotlib.pyplot as plt
 FILE_HIST = "prediksi permintaan (3).xlsx"
 FILE_FORE = "forecast_5th_beras.xlsx"
 
-# Data historis (sampai 2023)
+# Data historis (2018–2023)
 df_hist = pd.read_excel(FILE_HIST)
 df_hist.columns = df_hist.columns.str.strip()
 
-# Samakan nama kolom supaya konsisten
 df_hist = df_hist.rename(columns={
     "produksi": "Produksi",
     "konsumsi (ton)": "Konsumsi"
 })
 df_hist["Tahun"] = df_hist["Tahun"].astype(int)
 
-# Data prediksi (2024–2028)
+# Data forecast (2024–2028, format wide → long)
 df_fore = pd.read_excel(FILE_FORE)
 df_fore.columns = df_fore.columns.str.strip()
 
-# Pastikan ada kolom "Produksi" dan "Konsumsi"
-for col in ["Produksi", "Konsumsi"]:
-    if col not in df_fore.columns:
-        if "produksi" in df_fore.columns:
-            df_fore = df_fore.rename(columns={"produksi": "Produksi"})
-        if "konsumsi (ton)" in df_fore.columns:
-            df_fore = df_fore.rename(columns={"konsumsi (ton)": "Konsumsi"})
+id_vars = ["Provinsi", "Komoditas"]  # kolom identitas tetap
+value_vars = [c for c in df_fore.columns if "_" in c]  # kolom tahun
 
-df_fore["Tahun"] = df_fore["Tahun"].astype(int)
+df_long = pd.wide_to_long(
+    df_fore,
+    stubnames=["Konsumsi", "Produksi", "Surplus", "Status"],
+    i=id_vars,
+    j="Tahun",
+    sep="_",
+    suffix="\\d+"
+).reset_index()
 
-# Gabungkan historis + prediksi
-df = pd.concat([df_hist, df_fore], ignore_index=True)
+df_long["Tahun"] = df_long["Tahun"].astype(int)
 
-# Hitung Surplus
-df["Surplus"] = df["Produksi"] - df["Konsumsi"]
+# Gabungkan historis + forecast
+df = pd.concat([df_hist[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]],
+                df_long[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]]],
+               ignore_index=True)
+
+# Hitung surplus jika belum ada
+if "Surplus" not in df.columns:
+    df["Surplus"] = df["Produksi"] - df["Konsumsi"]
+
 df["Status"] = df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit")
 
 # ---------- 2. STREAMLIT UI ----------
@@ -93,4 +100,4 @@ st.pyplot(fig)
 
 # ---------- 5. FOOTER ----------
 st.markdown("---")
-st.caption("Dibuat untuk prediksi pangan Indonesia 2018–2028 menggunakan XGBoost + data historis dan proyeksi.")
+st.caption("Dibuat untuk prediksi pangan Indonesia 2018–2028 menggunakan data historis dan proyeksi forecast.")
