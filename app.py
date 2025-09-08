@@ -35,7 +35,7 @@ h1, h2, h3 {
 # ============================
 # 3. LOAD DATA
 # ============================
-FILE = "prediksi_permintaan.xlsx"
+FILE = "prediksi permintaan (3).xlsx"
 try:
     df = pd.read_excel(FILE)
 except FileNotFoundError:
@@ -80,3 +80,4 @@ st.pyplot(fig)
 # ============================
 st.subheader("📊 Data Prediksi")
 st.dataframe(df_prov.reset_index(drop=True))
+
