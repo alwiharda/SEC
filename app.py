@@ -1,136 +1,89 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from xgboost import XGBRegressor
 
-# ============================================================
+# =============================
 # 1. LOAD DATA
-# ============================================================
-DATA_FILE = "prediksi permintaan (3).xlsx"
+# =============================
+FILE_HIST = "prediksi_permintaan (3).xlsx"
+FILE_FORE = "forecast_5th_beras.xlsx"
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel(DATA_FILE)
+    df_hist = pd.read_excel(FILE_HIST)
+    df_fore = pd.read_excel(FILE_FORE)
+
+    # pastikan kolom konsisten
+    df_hist = df_hist.rename(columns={"Produksi (Ton)": "Produksi",
+                                      "Konsumsi (Ton)": "Konsumsi"})
+    if "Surplus" not in df_hist.columns:
+        df_hist["Surplus"] = df_hist["Produksi"] - df_hist["Konsumsi"]
+
+    if "Surplus" not in df_fore.columns and "Produksi" in df_fore.columns and "Konsumsi" in df_fore.columns:
+        df_fore["Surplus"] = df_fore["Produksi"] - df_fore["Konsumsi"]
+
+    # gabungkan historis (≤2023) + prediksi (≥2024)
+    df = pd.concat([df_hist[df_hist["Tahun"] <= 2023], df_fore[df_fore["Tahun"] >= 2024]], ignore_index=True)
+
+    # filter hanya 2018–2028
+    df = df[df["Tahun"].between(2018, 2028)]
     return df
 
 df = load_data()
 
-# ============================================================
-# 2. TITLE & FILTERS
-# ============================================================
-st.set_page_config(page_title="Prediksi Permintaan", layout="wide")
+# =============================
+# 2. SIDEBAR FILTER
+# =============================
+st.sidebar.header("🔎 Filter Data")
+provinsi = st.sidebar.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
+komoditas = st.sidebar.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
+tahun = st.sidebar.selectbox("Pilih Tahun", list(range(2018, 2029)))  # 2018–2028
 
-st.markdown(
-    """
-    <style>
-    body {
-        background-color: #f9fafb;
-        color: #333333;
-    }
-    .stApp {
-        background-color: #ffffff;
-    }
-    h1, h2, h3 {
-        color: #2c3e50;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# Filter data sesuai pilihan
+df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)]
 
-st.title("📊 Prediksi Kebutuhan & Surplus Pangan per Provinsi")
+# =============================
+# 3. TAMPILKAN DATA TAHUN TERTENTU
+# =============================
+st.title("📊 Prediksi Surplus / Defisit Pangan Indonesia (2018–2028)")
+st.markdown(f"### Provinsi: **{provinsi}**, Komoditas: **{komoditas}**")
 
-provinsi = st.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
-komoditas = st.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
+row = df_filtered[df_filtered["Tahun"] == tahun]
+if not row.empty:
+    produksi_val = float(row["Produksi"].values[0])
+    konsumsi_val = float(row["Konsumsi"].values[0])
+    surplus_val = produksi_val - konsumsi_val
+    status = "✅ Surplus" if surplus_val > 0 else "❌ Defisit"
 
-# ============================================================
-# 3. FILTER DATA & HITUNG SURPLUS HISTORIS
-# ============================================================
-df_prov = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)].copy()
+    st.subheader(f"Hasil Tahun {tahun}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric(label="Produksi", value=f"{produksi_val:,.0f} ton")
+    col2.metric(label="Konsumsi", value=f"{konsumsi_val:,.0f} ton")
+    col3.metric(label="Surplus / Defisit", value=f"{surplus_val:,.0f} ton", delta=status)
 
-if df_prov.empty:
-    st.warning("Data tidak tersedia untuk pilihan ini.")
-    st.stop()
+# =============================
+# 4. VISUALISASI TREND 2018–2028
+# =============================
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(df_filtered["Tahun"], df_filtered["Produksi"], marker="s", color="#55A868", label="Produksi")
+ax.plot(df_filtered["Tahun"], df_filtered["Konsumsi"], marker="o", color="#C44E52", label="Konsumsi")
+ax.fill_between(df_filtered["Tahun"], df_filtered["Surplus"], 0,
+                where=(df_filtered["Surplus"] >= 0), color="green", alpha=0.2, label="Surplus")
+ax.fill_between(df_filtered["Tahun"], df_filtered["Surplus"], 0,
+                where=(df_filtered["Surplus"] < 0), color="red", alpha=0.2, label="Defisit")
 
-df_prov["Surplus"] = df_prov["produksi"] - df_prov["konsumsi (ton)"]
+ax.axhline(0, color="black", linewidth=1, linestyle="--")
+ax.axvspan(2024, 2028, color="gray", alpha=0.2, label="Forecast 2024–2028")
 
-# ============================================================
-# 4. TRAINING MODEL XGBOOST
-# ============================================================
-X = df_prov[["Tahun"]]
-y_prod = df_prov["produksi"]
-y_cons = df_prov["konsumsi (ton)"]
-
-model_prod = XGBRegressor(n_estimators=200, random_state=42)
-model_cons = XGBRegressor(n_estimators=200, random_state=42)
-
-model_prod.fit(X, y_prod)
-model_cons.fit(X, y_cons)
-
-# ============================================================
-# 5. FORECAST 2024–2028
-# ============================================================
-tahun_forecast = np.arange(2024, 2029)
-X_future = pd.DataFrame({"Tahun": tahun_forecast})
-
-y_pred_prod = model_prod.predict(X_future)
-y_pred_cons = model_cons.predict(X_future)
-
-df_future = pd.DataFrame({
-    "Provinsi": provinsi,
-    "Komoditas": komoditas,
-    "Tahun": tahun_forecast,
-    "produksi": y_pred_prod,
-    "konsumsi (ton)": y_pred_cons
-})
-df_future["Surplus"] = df_future["produksi"] - df_future["konsumsi (ton)"]
-
-# ============================================================
-# 6. GABUNGKAN DATA HISTORIS + FORECAST
-# ============================================================
-df_plot = pd.concat([df_prov, df_future])
-
-# ============================================================
-# 7. VISUALISASI
-# ============================================================
-fig, ax = plt.subplots(figsize=(10,5))
-
-# Plot historis
-ax.plot(df_prov["Tahun"], df_prov["Surplus"], marker="o", label="Surplus Historis")
-
-# Plot prediksi
-ax.plot(df_future["Tahun"], df_future["Surplus"], marker="x", linestyle="--", label="Surplus Prediksi")
-
-# Shading area prediksi
-ax.fill_between(df_future["Tahun"], df_future["Surplus"].min(), df_future["Surplus"].max(),
-                color="gray", alpha=0.2, label="Forecast 2024-2028")
-
-ax.axhline(0, color="black", linestyle="--")
-ax.set_title(f"Prediksi Surplus {komoditas} — {provinsi} (2018-2028)")
-ax.set_ylabel("Surplus (Ton)")
+ax.set_title(f"Produksi vs Konsumsi & Surplus {komoditas} — {provinsi} (2018–2028)", fontsize=14)
 ax.set_xlabel("Tahun")
+ax.set_ylabel("Ton")
 ax.legend()
 
 st.pyplot(fig)
 
-# ============================================================
-# 8. TAMPILKAN DATA
-# ============================================================
-st.subheader("📋 Data Historis + Prediksi")
-st.dataframe(df_plot.reset_index(drop=True))
-
-# ============================================================
-# 9. CEK KEKURANGAN ATAU SURPLUS
-# ============================================================
-st.subheader("📌 Analisis Surplus / Kekurangan")
-
-last_year = df_plot["Tahun"].max()
-last_data = df_plot[df_plot["Tahun"] == last_year].iloc[0]
-
-if last_data["Surplus"] >= 0:
-    st.success(f"✅ Tahun {last_year}, {provinsi} diprediksi **SURPLUS** {komoditas} sebesar {last_data['Surplus']:.2f} ton.")
-else:
-    st.error(f"⚠️ Tahun {last_year}, {provinsi} diprediksi **KEKURANGAN** {komoditas} sebesar {abs(last_data['Surplus']):.2f} ton.")
-
-
+# =============================
+# 5. DATAFRAME
+# =============================
+st.markdown("### 📑 Data Lengkap 2018–2028")
+st.dataframe(df_filtered.reset_index(drop=True))
