@@ -26,8 +26,18 @@ h1, h2, h3 {
 .stSelectbox, .stButton>button {
     border-radius: 10px;
 }
-.reportview-container {
-    background: #f9f9f9;
+.dataframe {
+    background: white;
+}
+.surplus {
+    color: green;
+    font-weight: bold;
+    font-size: 20px;
+}
+.defisit {
+    color: red;
+    font-weight: bold;
+    font-size: 20px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -35,48 +45,73 @@ h1, h2, h3 {
 # ============================
 # 3. LOAD DATA
 # ============================
-FILE = "prediksi permintaan (3).xlsx"   # <── nama file sesuai data asli
+FILE = "prediksi permintaan (3).xlsx"
 try:
     df = pd.read_excel(FILE)
 except FileNotFoundError:
     st.error(f"❌ File `{FILE}` tidak ditemukan. Pastikan sudah diunggah ke folder yang sama dengan app.py.")
     st.stop()
 
+# pastikan kolom benar
+if "produksi" not in df.columns or "konsumsi (ton)" not in df.columns:
+    st.error("❌ Data tidak punya kolom 'produksi' atau 'konsumsi (ton)'.")
+    st.stop()
+
+# hitung surplus
+df["Surplus"] = df["produksi"] - df["konsumsi (ton)"]
+
 # ============================
 # 4. INPUT USER
 # ============================
-st.title("🌾 Prediksi Surplus Pangan per Provinsi")
-st.write("Visualisasi hasil forecast konsumsi vs produksi untuk menentukan surplus/defisit pangan.")
+st.title("🌾 Prediksi Surplus/Defisit Pangan")
 
-provinsi = st.selectbox("Pilih Provinsi", df["Provinsi"].unique())
+provinsi = st.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
+komoditas = st.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
+tahun = st.selectbox("Pilih Tahun", sorted(df["Tahun"].unique()))
 
-# filter data sesuai provinsi
-df_prov = df[df["Provinsi"] == provinsi].copy()
+# filter data sesuai input
+df_filtered = df[(df["Provinsi"] == provinsi) & 
+                 (df["Komoditas"] == komoditas)].copy()
 
-# hitung surplus jika belum ada
-if "Surplus" not in df_prov.columns:
-    if "produksi" in df_prov.columns and "konsumsi (ton)" in df_prov.columns:
-        df_prov["Surplus"] = df_prov["produksi"] - df_prov["konsumsi (ton)"]
+# ambil data tahun spesifik
+row = df_filtered[df_filtered["Tahun"] == tahun]
+
+if not row.empty:
+    produksi = row["produksi"].values[0]
+    konsumsi = row["konsumsi (ton)"].values[0]
+    surplus = row["Surplus"].values[0]
+
+    st.subheader("📊 Hasil Prediksi")
+    st.write(f"**Provinsi:** {provinsi}")
+    st.write(f"**Komoditas:** {komoditas}")
+    st.write(f"**Tahun:** {tahun}")
+    st.write(f"Produksi: **{produksi:,.0f} ton**")
+    st.write(f"Konsumsi: **{konsumsi:,.0f} ton**")
+
+    if surplus >= 0:
+        st.markdown(f"<p class='surplus'>✅ Surplus {surplus:,.0f} ton</p>", unsafe_allow_html=True)
     else:
-        st.error("❌ Data tidak punya kolom 'produksi' atau 'konsumsi (ton)'.")
-        st.stop()
+        st.markdown(f"<p class='defisit'>❌ Defisit {abs(surplus):,.0f} ton</p>", unsafe_allow_html=True)
+else:
+    st.warning("⚠️ Data untuk tahun ini tidak tersedia.")
 
 # ============================
 # 5. PLOT GRAFIK
 # ============================
-fig, ax = plt.subplots(figsize=(10,5))
-ax.plot(df_prov["Tahun"], df_prov["Surplus"], marker="o", color="#4C72B0", linewidth=2)
-ax.axhline(0, color="red", linestyle="--", linewidth=1, alpha=0.7)
+if not df_filtered.empty:
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.plot(df_filtered["Tahun"], df_filtered["Surplus"], marker="o", color="#4C72B0", linewidth=2)
+    ax.axhline(0, color="red", linestyle="--", linewidth=1, alpha=0.7)
 
-ax.set_title(f"Prediksi Surplus {provinsi} (2018-2028)", fontsize=14)
-ax.set_ylabel("Surplus (Ton)")
-ax.set_xlabel("Tahun")
-ax.grid(True, linestyle="--", alpha=0.6)
+    ax.set_title(f"Tren Surplus {komoditas} - {provinsi} (2018-2028)", fontsize=14)
+    ax.set_ylabel("Surplus (Ton)")
+    ax.set_xlabel("Tahun")
+    ax.grid(True, linestyle="--", alpha=0.6)
 
-st.pyplot(fig)
+    st.pyplot(fig)
 
 # ============================
-# 6. DATAFRAME OUTPUT
+# 6. TAMPILKAN DATAFRAME
 # ============================
-st.subheader("📊 Data Prediksi")
-st.dataframe(df_prov.reset_index(drop=True))
+st.subheader("📑 Data Lengkap")
+st.dataframe(df_filtered.reset_index(drop=True))
