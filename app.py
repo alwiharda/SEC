@@ -36,7 +36,7 @@ h1, h2, h3 {
 st.title("📊 Prediksi Konsumsi & Produksi Pangan")
 
 # Load data
-df = pd.read_excel("prediksi_permintaan.xlsx")
+df = pd.read_excel("prediksi permintaan (3).xlsx")
 
 # Pilih provinsi
 provinsi = st.selectbox("Pilih Provinsi", df["Provinsi"].unique())
@@ -53,3 +53,4 @@ ax.grid(True, linestyle="--", alpha=0.6)
 st.pyplot(fig)
 
 st.info("🔍 Pilih provinsi di dropdown untuk melihat prediksi surplus.")
+
