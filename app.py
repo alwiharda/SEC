@@ -4,6 +4,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import re
 
 # ---------- 1. LOAD DATA ----------
 FILE_HIST = "prediksi permintaan (3).xlsx"
@@ -19,50 +20,53 @@ df_hist = df_hist.rename(columns={
 })
 df_hist["Tahun"] = df_hist["Tahun"].astype(int)
 
-# Data forecast (2024–2028, format wide → long)
+# Data forecast (2024–2028, format wide)
 df_fore = pd.read_excel(FILE_FORE)
 df_fore.columns = df_fore.columns.str.strip()
 
-# Rename Surplus & Status supaya tidak bentrok
-rename_map = {}
-for c in df_fore.columns:
-    if c.startswith("Surplus_"):
-        rename_map[c] = c.replace("Surplus_", "SPS_")
-    if c.startswith("Status_"):
-        rename_map[c] = c.replace("Status_", "STS_")
-df_fore = df_fore.rename(columns=rename_map)
+# Ubah wide ke long pakai melt manual
+value_vars = [c for c in df_fore.columns if "_" in c]  # hanya kolom prediksi
+df_long = df_fore.melt(
+    id_vars=["Provinsi", "Komoditas"],
+    value_vars=value_vars,
+    var_name="Variable",
+    value_name="Value"
+)
 
-# Reshape wide → long
-id_vars = ["Provinsi", "Komoditas"]
-df_long = pd.wide_to_long(
-    df_fore,
-    stubnames=["Konsumsi", "Produksi", "SPS", "STS"],
-    i=id_vars,
-    j="Tahun",
-    sep="_",
-    suffix="\\d+"
+# Ekstrak Tahun & Jenis (Produksi/Konsumsi/Surplus/Status)
+df_long["Tahun"] = df_long["Variable"].apply(lambda x: int(re.findall(r"\d+", x)[0]))
+df_long["Jenis"] = df_long["Variable"].apply(lambda x: re.sub(r"_\d+", "", x))
+df_long = df_long.drop(columns=["Variable"])
+
+# Pivot kembali supaya bentuknya rapi
+df_long = df_long.pivot_table(
+    index=["Provinsi", "Komoditas", "Tahun"],
+    columns="Jenis",
+    values="Value",
+    aggfunc="first"
 ).reset_index()
-
-df_long["Tahun"] = df_long["Tahun"].astype(int)
-
-# Kembalikan nama kolom standar
-df_long = df_long.rename(columns={"SPS": "Surplus", "STS": "Status"})
 
 # Gabungkan historis + forecast
 df = pd.concat(
     [
         df_hist[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]],
-        df_long[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi", "Surplus", "Status"]]
+        df_long
     ],
     ignore_index=True
 )
 
-# Hitung surplus jika kosong
-if "Surplus" not in df.columns or df["Surplus"].isnull().all():
+# Hitung surplus & status bila kosong
+if "Surplus" not in df.columns:
     df["Surplus"] = df["Produksi"] - df["Konsumsi"]
+else:
+    df["Surplus"] = df["Surplus"].fillna(df["Produksi"] - df["Konsumsi"])
 
-if "Status" not in df.columns or df["Status"].isnull().all():
+if "Status" not in df.columns:
     df["Status"] = df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit")
+else:
+    df["Status"] = df["Status"].fillna(df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit"))
+
+df["Tahun"] = df["Tahun"].astype(int)
 
 # ---------- 2. STREAMLIT UI ----------
 st.set_page_config(page_title="Prediksi Surplus/Defisit", layout="wide")
@@ -96,7 +100,7 @@ if not row_selected.empty:
         - **Produksi**: {row_selected['Produksi'].values[0]:,.0f} ton  
         - **Konsumsi**: {row_selected['Konsumsi'].values[0]:,.0f} ton  
         - **Surplus**: {surplus_val:,.0f} ton  
-        - **Status**: 🟢 **{status_val}** jika Surplus, 🔴 **{status_val}** jika Defisit
+        - **Status**: {"🟢 Surplus" if status_val=="Surplus" else "🔴 Defisit"}
         """
     )
 
