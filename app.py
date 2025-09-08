@@ -7,7 +7,7 @@ from xgboost import XGBRegressor
 # ============================================================
 # 1. LOAD DATA
 # ============================================================
-DATA_FILE = "prediksi_permintaan.xlsx"
+DATA_FILE = "prediksi_permintaan (3).xlsx"
 
 @st.cache_data
 def load_data():
@@ -132,3 +132,4 @@ if last_data["Surplus"] >= 0:
     st.success(f"✅ Tahun {last_year}, {provinsi} diprediksi **SURPLUS** {komoditas} sebesar {last_data['Surplus']:.2f} ton.")
 else:
     st.error(f"⚠️ Tahun {last_year}, {provinsi} diprediksi **KEKURANGAN** {komoditas} sebesar {abs(last_data['Surplus']):.2f} ton.")
+
