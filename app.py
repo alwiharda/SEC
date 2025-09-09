@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # -------------------------
 # 1. LOAD DATA HISTORIS
 # -------------------------
-FILE = "prediksi_permintaan (3).xlsx"
+FILE = "prediksi permintaan (3).xlsx"
 
 df = pd.read_excel(FILE)
 df.columns = df.columns.str.strip()
@@ -119,3 +119,4 @@ ax.axvline(x=next_year, color="red", linestyle="--", label="Prediksi Tahun Berik
 ax.legend()
 ax.set_title(f"Data & Prediksi Surplus — {provinsi} ({komoditas})")
 st.pyplot(fig)
+
