@@ -1,128 +1,135 @@
-# ============================================================
-# app.py – Training + Prediksi Produksi & Konsumsi (Streamlit)
-# ============================================================
 import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import GroupKFold
-import xgboost as xgb
-import joblib, pathlib, warnings, os
+import matplotlib.pyplot as plt
 
-warnings.filterwarnings("ignore")
+# ==============================
+# 1. LOAD DATA
+# ==============================
+df_aktual = pd.read_excel("prediksi permintaan (3).xlsx")
+df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
 
-# ---------- 1. KONFIG ----------
-st.set_page_config(page_title="Prediksi Pangan", layout="wide")
-MODEL_DIR = pathlib.Path("model_output")
-MODEL_DIR.mkdir(exist_ok=True)
+# Samakan nama kolom
+df_aktual.rename(columns={
+    "Produksi": "produksi",
+    "Konsumsi (ton)": "konsumsi"
+}, inplace=True)
 
-FILE = r"prediksi permintaan (3).xlsx"
+df_forecast.rename(columns={
+    "Produksi": "produksi",
+    "Konsumsi (ton)": "konsumsi"
+}, inplace=True)
 
-# ---------- 2. LOAD DATA ----------
-@st.cache_data
-def load_data():
-    df = pd.read_excel(FILE, sheet_name="Sheet1")
-    df.columns = df.columns.str.strip()
-    df["konsumsi (ton)"] = pd.to_numeric(df["konsumsi (ton)"], errors="coerce")
-    df["produksi"] = pd.to_numeric(df["produksi"], errors="coerce")
-    df = df.dropna()
-    df["Tahun"] = df["Tahun"].astype(int)
+# Gabungkan data aktual dan forecast
+df_all = pd.concat([df_aktual, df_forecast], ignore_index=True)
 
-    # Tambahkan lag
-    df = df.sort_values(["Provinsi", "Komoditas", "Tahun"])
-    for target in ["konsumsi (ton)", "produksi"]:
-        df[f"{target}_lag1"] = df.groupby(["Provinsi", "Komoditas"])[target].shift(1)
-        df[f"{target}_lag2"] = df.groupby(["Provinsi", "Komoditas"])[target].shift(2)
-    df = df.dropna()
-    return df
+# Hitung surplus
+df_all["surplus"] = df_all["produksi"] - df_all["konsumsi"]
 
-df = load_data()
+# ==============================
+# 2. CSS STYLING
+# ==============================
+st.markdown(
+    """
+    <style>
+    /* Background */
+    .stApp {
+        background: linear-gradient(135deg, #f9f9f9, #eef6f9);
+        color: #333333;
+        font-family: "Arial", sans-serif;
+    }
 
-# ---------- 3. TRAIN MODEL (jika belum ada) ----------
-def train_and_save_models(df):
-    def train_target(target):
-        feat = ["curah hujan (mm)", "suhu (C)", "Jumlah Penduduk", "PDRB (tahunan)",
-                f"{target}_lag1", f"{target}_lag2"]
+    /* Title */
+    h1 {
+        color: #2C3E50;
+        text-align: center;
+        font-size: 32px;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
 
-        for kom in df["Komoditas"].unique():
-            fname = MODEL_DIR / f"{kom.lower()}_{target.split()[0].lower()}.pkl"
-            if fname.exists():
-                continue  # skip kalau sudah ada
+    /* Subheader */
+    h2, h3 {
+        color: #34495E;
+        margin-top: 30px;
+    }
 
-            sub = df[df["Komoditas"] == kom].copy()
-            X = sub[feat]
-            y = sub[target]
-            y_log = np.log1p(y)
+    /* Dataframe styling */
+    .dataframe {
+        border-radius: 10px;
+        border: 1px solid #ddd;
+    }
 
-            groups = sub["Provinsi"].factorize()[0]
-            gkf = GroupKFold(n_splits=5)
+    /* Dropdown & widgets */
+    div[data-baseweb="select"] {
+        border-radius: 10px;
+        border: 1px solid #aaa;
+    }
 
-            for tr_idx, vl_idx in gkf.split(X, y_log, groups):
-                X_tr, X_vl = X.iloc[tr_idx], X.iloc[vl_idx]
-                y_tr, y_vl = y_log.iloc[tr_idx], y_log.iloc[vl_idx]
+    /* Info box */
+    .stAlert {
+        border-radius: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-                model = xgb.XGBRegressor(
-                    n_estimators=200, learning_rate=0.05, max_depth=3,
-                    subsample=0.6, colsample_bytree=0.6, reg_lambda=5.0,
-                    objective="reg:tweedie", tweedie_variance_power=1.2,
-                    eval_metric="mae", random_state=42, n_jobs=-1,
-                )
-                model.fit(X_tr, y_tr)
+# ==============================
+# 3. STREAMLIT UI
+# ==============================
+st.title("📊 Prediksi Produksi, Konsumsi, dan Surplus Komoditas Pangan")
 
-            # full train
-            full_model = xgb.XGBRegressor(**model.get_params())
-            full_model.fit(X, y_log)
+# Dropdown pilihan
+provinsi = st.selectbox("🏙️ Pilih Provinsi", df_all["Provinsi"].unique())
+komoditas = st.selectbox("🌾 Pilih Komoditas", df_all["Komoditas"].unique())
 
-            joblib.dump({"model": full_model, "feat": feat}, fname)
-            st.success(f"✅ Model {kom} ({target}) tersimpan → {fname.name}")
+# Filter provinsi + komoditas
+df_selected = df_all[(df_all["Provinsi"] == provinsi) & (df_all["Komoditas"] == komoditas)]
 
-    train_target("konsumsi (ton)")
-    train_target("produksi")
+# Dropdown tahun (ditambah opsi 'Semua Tahun')
+tahun_opsi = ["Semua Tahun"] + sorted(df_selected["Tahun"].unique().tolist())
+tahun = st.selectbox("📅 Pilih Tahun", tahun_opsi)
 
-# Panggil sekali (auto training kalau model belum ada)
-train_and_save_models(df)
+if tahun != "Semua Tahun":
+    df_selected = df_selected[df_selected["Tahun"] == tahun]
 
-# ---------- 4. UI ----------
-st.title("📊 Prediksi Produksi & Konsumsi Komoditas")
+# ==============================
+# 4. DATA TABEL
+# ==============================
+st.subheader(f"📋 Data Aktual + Prediksi {komoditas} ({provinsi})")
+st.dataframe(df_selected[["Tahun", "produksi", "konsumsi", "surplus"]])
 
-komoditas = st.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
-target = st.radio("Pilih Target", ["Produksi", "Konsumsi"])
-target_file = "produksi" if target == "Produksi" else "konsumsi"
-model_file = MODEL_DIR / f"{komoditas.lower()}_{target_file.lower()}.pkl"
+# ==============================
+# 5. VISUALISASI
+# ==============================
+if tahun == "Semua Tahun":
+    # Plot 1: Produksi, Konsumsi, Surplus (provinsi terpilih)
+    st.subheader("📈 Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
 
-# ---------- 5. DATA AKTUAL ----------
-st.subheader("📑 Data Aktual")
-sub = df[df["Komoditas"] == komoditas][["Tahun", "produksi", "konsumsi (ton)"]]
-st.dataframe(sub.sort_values("Tahun"))
+    fig1, ax1 = plt.subplots(figsize=(8,5))
+    ax1.plot(df_selected["Tahun"], df_selected["produksi"], marker="o", label="Produksi", color="#3498DB")
+    ax1.plot(df_selected["Tahun"], df_selected["konsumsi"], marker="o", label="Konsumsi", color="#E74C3C")
+    ax1.plot(df_selected["Tahun"], df_selected["surplus"], marker="o", label="Surplus", color="#2ECC71")
+    ax1.legend()
+    ax1.set_xlabel("Tahun")
+    ax1.set_ylabel("Ton")
+    ax1.set_title(f"Produksi, Konsumsi, dan Surplus {komoditas} - {provinsi}")
+    st.pyplot(fig1)
 
-# ---------- 6. PREDIKSI ----------
-if not model_file.exists():
-    st.error("Model belum tersedia untuk komoditas ini.")
-    st.stop()
+    # Plot 2: Perbandingan semua provinsi
+    st.subheader("🌍 Perbandingan Antar Provinsi (2018–2028)")
 
-mdl = joblib.load(model_file)
-model, feat = mdl["model"], mdl["feat"]
+    df_compare = df_all[df_all["Komoditas"] == komoditas]
 
-# pakai data terakhir buat prediksi 3 tahun ke depan
-df_last = df[df["Komoditas"] == komoditas].sort_values("Tahun").copy().iloc[-1:]
-preds = []
+    fig2, ax2 = plt.subplots(figsize=(10,6))
+    for prov in df_compare["Provinsi"].unique():
+        dprov = df_compare[df_compare["Provinsi"] == prov]
+        ax2.plot(dprov["Tahun"], dprov["produksi"], label=f"{prov}", linewidth=2)
 
-for t in range(1, 4):
-    tahun_next = int(df_last["Tahun"].values[0]) + t
-    lag1 = df_last[target_file.lower()].values[0]
-    lag2 = df_last[target_file.lower()].shift(1, fill_value=lag1).values[0]
-
-    X_new = pd.DataFrame([{
-        "curah hujan (mm)": df_last["curah hujan (mm)"].values[0],
-        "suhu (C)": df_last["suhu (C)"].values[0],
-        "Jumlah Penduduk": df_last["Jumlah Penduduk"].values[0],
-        "PDRB (tahunan)": df_last["PDRB (tahunan)"].values[0],
-        f"{target_file}_lag1": lag1,
-        f"{target_file}_lag2": lag2,
-    }])
-
-    y_pred = np.expm1(model.predict(X_new))[0]
-    preds.append({"Tahun": tahun_next, target: y_pred})
-    df_last[target_file.lower()] = y_pred  # update untuk prediksi berikutnya
-
-st.subheader("🔮 Prediksi 3 Tahun ke Depan")
-st.dataframe(pd.DataFrame(preds).round(2))
+    ax2.set_xlabel("Tahun")
+    ax2.set_ylabel("Produksi (Ton)")
+    ax2.set_title(f"Perbandingan Produksi {komoditas} Antar Provinsi (2018–2028)")
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    st.pyplot(fig2)
+else:
+    st.info("📌 Grafik hanya muncul jika memilih 'Semua Tahun'")
