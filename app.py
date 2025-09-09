@@ -35,7 +35,7 @@ def load_data():
     df_hist.rename(columns={"Produksi": "produksi", "Konsumsi": "konsumsi (ton)"}, inplace=True)
 
     # Data prediksi 2024–2028
-    df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
+    df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas (5).xlsx")
 
     # Samakan kolom
     df_hist["Stok"] = df_hist["produksi"] - df_hist["konsumsi (ton)"]
@@ -104,3 +104,4 @@ st.pyplot(fig)
 # =========================================================
 st.subheader("📋 Tabel Data")
 st.dataframe(df_filtered[["Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]], use_container_width=True)
+
