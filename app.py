@@ -49,7 +49,7 @@ st.set_page_config(page_title="Prediksi Surplus Pangan", layout="wide")
 st.title("📊 Prediksi Produksi, Konsumsi & Surplus Pangan")
 
 # baca data langsung
-FILE = "prediksi_permintaan (3).xlsx"
+FILE = "prediksi permintaan (3).xlsx"
 df = pd.read_excel(FILE)
 
 # pilih provinsi & komoditas
@@ -99,3 +99,4 @@ if len(df_filtered) > 3:
 
 else:
     st.warning("Data terlalu sedikit untuk membuat prediksi.")
+
