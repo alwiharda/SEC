@@ -1,135 +1,109 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ==============================
-# 1. LOAD DATA
+# CONFIGURASI HALAMAN
+# ==============================
+st.set_page_config(page_title="Dashboard Prediksi Komoditas", layout="wide")
+
+# ==============================
+# CSS AGAR TAMPILAN MENARIK
+# ==============================
+st.markdown("""
+    <style>
+    body {
+        background-color: #f9fafc;
+    }
+    .main {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    h1, h2, h3 {
+        color: #2c3e50;
+    }
+    .stSelectbox, .stMultiSelect {
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==============================
+# LOAD DATA
 # ==============================
 df_aktual = pd.read_excel("prediksi permintaan (3).xlsx")
 df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
 
-# Samakan nama kolom
-df_aktual.rename(columns={
-    "Produksi": "produksi",
-    "Konsumsi (ton)": "konsumsi"
-}, inplace=True)
+# Ambil kolom penting saja agar konsisten
+df_aktual = df_aktual[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
+df_forecast = df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
 
-df_forecast.rename(columns={
-    "Produksi": "produksi",
-    "Konsumsi (ton)": "konsumsi"
-}, inplace=True)
-
-# Gabungkan data aktual dan forecast
+# Gabungkan
 df_all = pd.concat([df_aktual, df_forecast], ignore_index=True)
 
 # Hitung surplus
-df_all["surplus"] = df_all["produksi"] - df_all["konsumsi"]
+df_all["surplus"] = df_all["produksi"] - df_all["konsumsi (ton)"]
 
 # ==============================
-# 2. CSS STYLING
+# SIDEBAR FILTER
 # ==============================
-st.markdown(
-    """
-    <style>
-    /* Background */
-    .stApp {
-        background: linear-gradient(135deg, #f9f9f9, #eef6f9);
-        color: #333333;
-        font-family: "Arial", sans-serif;
-    }
+st.sidebar.header("Filter Data")
 
-    /* Title */
-    h1 {
-        color: #2C3E50;
-        text-align: center;
-        font-size: 32px;
-        font-weight: bold;
-        margin-bottom: 20px;
-    }
+provinsi_list = df_all["Provinsi"].unique().tolist()
+komoditas_list = df_all["Komoditas"].unique().tolist()
+tahun_list = sorted(df_all["Tahun"].unique().tolist())
 
-    /* Subheader */
-    h2, h3 {
-        color: #34495E;
-        margin-top: 30px;
-    }
-
-    /* Dataframe styling */
-    .dataframe {
-        border-radius: 10px;
-        border: 1px solid #ddd;
-    }
-
-    /* Dropdown & widgets */
-    div[data-baseweb="select"] {
-        border-radius: 10px;
-        border: 1px solid #aaa;
-    }
-
-    /* Info box */
-    .stAlert {
-        border-radius: 10px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+provinsi = st.sidebar.selectbox("Pilih Provinsi", provinsi_list)
+komoditas = st.sidebar.selectbox("Pilih Komoditas", komoditas_list)
+tahun = st.sidebar.multiselect("Pilih Tahun", tahun_list, default=tahun_list)
 
 # ==============================
-# 3. STREAMLIT UI
+# FILTER DATA SESUAI INPUT
 # ==============================
-st.title("📊 Prediksi Produksi, Konsumsi, dan Surplus Komoditas Pangan")
-
-# Dropdown pilihan
-provinsi = st.selectbox("🏙️ Pilih Provinsi", df_all["Provinsi"].unique())
-komoditas = st.selectbox("🌾 Pilih Komoditas", df_all["Komoditas"].unique())
-
-# Filter provinsi + komoditas
-df_selected = df_all[(df_all["Provinsi"] == provinsi) & (df_all["Komoditas"] == komoditas)]
-
-# Dropdown tahun (ditambah opsi 'Semua Tahun')
-tahun_opsi = ["Semua Tahun"] + sorted(df_selected["Tahun"].unique().tolist())
-tahun = st.selectbox("📅 Pilih Tahun", tahun_opsi)
-
-if tahun != "Semua Tahun":
-    df_selected = df_selected[df_selected["Tahun"] == tahun]
+df_filtered = df_all[
+    (df_all["Provinsi"] == provinsi) &
+    (df_all["Komoditas"] == komoditas) &
+    (df_all["Tahun"].isin(tahun))
+]
 
 # ==============================
-# 4. DATA TABEL
+# TAMPILKAN DATA
 # ==============================
-st.subheader(f"📋 Data Aktual + Prediksi {komoditas} ({provinsi})")
-st.dataframe(df_selected[["Tahun", "produksi", "konsumsi", "surplus"]])
+st.title("📊 Dashboard Prediksi Komoditas")
+st.subheader(f"Provinsi: {provinsi} | Komoditas: {komoditas}")
+
+st.dataframe(df_filtered, use_container_width=True)
 
 # ==============================
-# 5. VISUALISASI
+# VISUALISASI 1: Per Provinsi
 # ==============================
-if tahun == "Semua Tahun":
-    # Plot 1: Produksi, Konsumsi, Surplus (provinsi terpilih)
-    st.subheader("📈 Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
+st.markdown("### Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
 
-    fig1, ax1 = plt.subplots(figsize=(8,5))
-    ax1.plot(df_selected["Tahun"], df_selected["produksi"], marker="o", label="Produksi", color="#3498DB")
-    ax1.plot(df_selected["Tahun"], df_selected["konsumsi"], marker="o", label="Konsumsi", color="#E74C3C")
-    ax1.plot(df_selected["Tahun"], df_selected["surplus"], marker="o", label="Surplus", color="#2ECC71")
-    ax1.legend()
-    ax1.set_xlabel("Tahun")
-    ax1.set_ylabel("Ton")
-    ax1.set_title(f"Produksi, Konsumsi, dan Surplus {komoditas} - {provinsi}")
-    st.pyplot(fig1)
+fig, ax = plt.subplots(figsize=(10,5))
+sns.lineplot(data=df_filtered, x="Tahun", y="produksi", marker="o", label="Produksi", ax=ax)
+sns.lineplot(data=df_filtered, x="Tahun", y="konsumsi (ton)", marker="o", label="Konsumsi", ax=ax)
+sns.lineplot(data=df_filtered, x="Tahun", y="surplus", marker="o", label="Surplus", ax=ax)
 
-    # Plot 2: Perbandingan semua provinsi
-    st.subheader("🌍 Perbandingan Antar Provinsi (2018–2028)")
+ax.set_title(f"Tren {komoditas} di {provinsi}", fontsize=14)
+ax.set_ylabel("Jumlah (ton)")
+ax.legend()
+st.pyplot(fig)
 
-    df_compare = df_all[df_all["Komoditas"] == komoditas]
+# ==============================
+# VISUALISASI 2: Gabungan Semua Provinsi
+# ==============================
+st.markdown("### Perbandingan Antar Provinsi (2018–2028)")
 
-    fig2, ax2 = plt.subplots(figsize=(10,6))
-    for prov in df_compare["Provinsi"].unique():
-        dprov = df_compare[df_compare["Provinsi"] == prov]
-        ax2.plot(dprov["Tahun"], dprov["produksi"], label=f"{prov}", linewidth=2)
+df_compare = df_all[
+    (df_all["Komoditas"] == komoditas) &
+    (df_all["Tahun"].isin(tahun))
+]
 
-    ax2.set_xlabel("Tahun")
-    ax2.set_ylabel("Produksi (Ton)")
-    ax2.set_title(f"Perbandingan Produksi {komoditas} Antar Provinsi (2018–2028)")
-    ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-    st.pyplot(fig2)
-else:
-    st.info("📌 Grafik hanya muncul jika memilih 'Semua Tahun'")
+fig2, ax2 = plt.subplots(figsize=(12,6))
+sns.lineplot(data=df_compare, x="Tahun", y="produksi", hue="Provinsi", ax=ax2)
+ax2.set_title(f"Perbandingan Produksi {komoditas} Antar Provinsi", fontsize=14)
+ax2.set_ylabel("Jumlah (ton)")
+st.pyplot(fig2)
