@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Dashboard Prediksi Komoditas", layout="wide")
 
 # ==============================
-# CSS AGAR TAMPILAN MENARIK
+# CSS TAMPILAN
 # ==============================
 st.markdown("""
     <style>
@@ -24,9 +24,6 @@ st.markdown("""
     h1, h2, h3 {
         color: #2c3e50;
     }
-    .stSelectbox, .stMultiSelect {
-        border-radius: 8px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -36,9 +33,13 @@ st.markdown("""
 df_aktual = pd.read_excel("prediksi permintaan (3).xlsx")
 df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
 
-# Ambil kolom penting saja agar konsisten
+# Ambil kolom penting
 df_aktual = df_aktual[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
 df_forecast = df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
+
+# Pastikan data sesuai tahun
+df_aktual = df_aktual[df_aktual["Tahun"] <= 2023]
+df_forecast = df_forecast[df_forecast["Tahun"] >= 2024]
 
 # Gabungkan
 df_all = pd.concat([df_aktual, df_forecast], ignore_index=True)
@@ -60,7 +61,7 @@ komoditas = st.sidebar.selectbox("Pilih Komoditas", komoditas_list)
 tahun = st.sidebar.multiselect("Pilih Tahun", tahun_list, default=tahun_list)
 
 # ==============================
-# FILTER DATA SESUAI INPUT
+# FILTER DATA
 # ==============================
 df_filtered = df_all[
     (df_all["Provinsi"] == provinsi) &
@@ -77,7 +78,7 @@ st.subheader(f"Provinsi: {provinsi} | Komoditas: {komoditas}")
 st.dataframe(df_filtered, use_container_width=True)
 
 # ==============================
-# VISUALISASI 1: Per Provinsi
+# VISUALISASI 1: Tren per Provinsi
 # ==============================
 st.markdown("### Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
 
