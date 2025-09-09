@@ -1,123 +1,132 @@
 # ============================================================
-# app.py – Web Prediksi Surplus / Defisit Provinsi
+# app.py – Prediksi Surplus Pangan dengan XGBoost
 # ============================================================
 import streamlit as st
 import pandas as pd
+import numpy as np
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
-import re
 
-# ---------- 1. LOAD DATA ----------
-FILE_HIST = "prediksi permintaan (3).xlsx"
-FILE_FORE = "forecast_5th_beras.xlsx"
+# -------------------------
+# 1. LOAD DATA
+# -------------------------
+FILE = "prediksi_permintaan (3).xlsx"
 
-# Data historis (2018–2023)
-df_hist = pd.read_excel(FILE_HIST)
-df_hist.columns = df_hist.columns.str.strip()
+df = pd.read_excel(FILE)
+df.columns = df.columns.str.strip()
 
-df_hist = df_hist.rename(columns={
+# Pastikan konsisten
+df = df.rename(columns={
     "produksi": "Produksi",
     "konsumsi (ton)": "Konsumsi"
 })
-df_hist["Tahun"] = df_hist["Tahun"].astype(int)
-
-# Data forecast (2024–2028, format wide)
-df_fore = pd.read_excel(FILE_FORE)
-df_fore.columns = df_fore.columns.str.strip()
-
-# Ubah wide ke long pakai melt manual
-value_vars = [c for c in df_fore.columns if "_" in c]  # hanya kolom prediksi
-df_long = df_fore.melt(
-    id_vars=["Provinsi", "Komoditas"],
-    value_vars=value_vars,
-    var_name="Variable",
-    value_name="Value"
-)
-
-# Ekstrak Tahun & Jenis (Produksi/Konsumsi/Surplus/Status)
-df_long["Tahun"] = df_long["Variable"].apply(lambda x: int(re.findall(r"\d+", x)[0]))
-df_long["Jenis"] = df_long["Variable"].apply(lambda x: re.sub(r"_\d+", "", x))
-df_long = df_long.drop(columns=["Variable"])
-
-# Pivot kembali supaya bentuknya rapi
-df_long = df_long.pivot_table(
-    index=["Provinsi", "Komoditas", "Tahun"],
-    columns="Jenis",
-    values="Value",
-    aggfunc="first"
-).reset_index()
-
-# Gabungkan historis + forecast
-df = pd.concat(
-    [
-        df_hist[["Provinsi", "Komoditas", "Tahun", "Produksi", "Konsumsi"]],
-        df_long
-    ],
-    ignore_index=True
-)
-
-# Hitung surplus & status bila kosong
-if "Surplus" not in df.columns:
-    df["Surplus"] = df["Produksi"] - df["Konsumsi"]
-else:
-    df["Surplus"] = df["Surplus"].fillna(df["Produksi"] - df["Konsumsi"])
-
-if "Status" not in df.columns:
-    df["Status"] = df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit")
-else:
-    df["Status"] = df["Status"].fillna(df["Surplus"].apply(lambda x: "Surplus" if x > 0 else "Defisit"))
-
 df["Tahun"] = df["Tahun"].astype(int)
 
-# ---------- 2. STREAMLIT UI ----------
-st.set_page_config(page_title="Prediksi Surplus/Defisit", layout="wide")
+# -------------------------
+# 2. ENCODING
+# -------------------------
+le_prov = LabelEncoder()
+le_komod = LabelEncoder()
 
-st.title("📊 Prediksi Surplus / Defisit Pangan 2018–2028")
+df["Provinsi_enc"] = le_prov.fit_transform(df["Provinsi"])
+df["Komoditas_enc"] = le_komod.fit_transform(df["Komoditas"])
 
-col1, col2, col3 = st.columns(3)
+# Fitur
+X = df[["Tahun", "Provinsi_enc", "Komoditas_enc"]]
+
+# -------------------------
+# 3. TRAIN MODEL PRODUKSI
+# -------------------------
+y_prod = df["Produksi"]
+X_train, X_test, y_train, y_test = train_test_split(X, y_prod, test_size=0.2, random_state=42)
+
+model_prod = xgb.XGBRegressor(
+    n_estimators=300,
+    learning_rate=0.1,
+    max_depth=5,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42
+)
+model_prod.fit(X_train, y_train)
+
+# -------------------------
+# 4. TRAIN MODEL KONSUMSI
+# -------------------------
+y_kons = df["Konsumsi"]
+X_train, X_test, y_train, y_test = train_test_split(X, y_kons, test_size=0.2, random_state=42)
+
+model_kons = xgb.XGBRegressor(
+    n_estimators=300,
+    learning_rate=0.1,
+    max_depth=5,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42
+)
+model_kons.fit(X_train, y_train)
+
+# -------------------------
+# 5. STREAMLIT UI
+# -------------------------
+st.set_page_config(page_title="Prediksi Surplus XGBoost", layout="wide")
+st.title("📊 Prediksi Surplus Pangan 2024–2028 (XGBoost)")
+
+col1, col2 = st.columns(2)
 with col1:
     provinsi = st.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
 with col2:
     komoditas = st.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
-with col3:
-    tahun = st.selectbox("Pilih Tahun", sorted(df["Tahun"].unique()))
 
-# Filter data sesuai pilihan
-df_prov = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)]
+tahun_pred = st.slider("Pilih Tahun Prediksi", 2024, 2028, 2024)
 
-# ---------- 3. TAMPILKAN DATA ----------
-st.subheader(f"Data {provinsi} – {komoditas}")
-st.dataframe(df_prov[["Tahun", "Produksi", "Konsumsi", "Surplus", "Status"]])
+# Encode input
+prov_enc = le_prov.transform([provinsi])[0]
+komod_enc = le_komod.transform([komoditas])[0]
 
-# Ambil data tahun terpilih
-row_selected = df_prov[df_prov["Tahun"] == tahun]
-if not row_selected.empty:
-    surplus_val = row_selected["Surplus"].values[0]
-    status_val = row_selected["Status"].values[0]
+# -------------------------
+# 6. PREDIKSI
+# -------------------------
+X_input = pd.DataFrame({
+    "Tahun": [tahun_pred],
+    "Provinsi_enc": [prov_enc],
+    "Komoditas_enc": [komod_enc]
+})
 
-    st.markdown(
-        f"""
-        ### 📌 Hasil Prediksi {tahun}
-        - **Produksi**: {row_selected['Produksi'].values[0]:,.0f} ton  
-        - **Konsumsi**: {row_selected['Konsumsi'].values[0]:,.0f} ton  
-        - **Surplus**: {surplus_val:,.0f} ton  
-        - **Status**: {"🟢 Surplus" if status_val=="Surplus" else "🔴 Defisit"}
-        """
-    )
+pred_prod = model_prod.predict(X_input)[0]
+pred_kons = model_kons.predict(X_input)[0]
+pred_surplus = pred_prod - pred_kons
 
-# ---------- 4. VISUALISASI ----------
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.plot(df_prov["Tahun"], df_prov["Produksi"], marker="o", label="Produksi", color="#1f77b4")
-ax.plot(df_prov["Tahun"], df_prov["Konsumsi"], marker="s", label="Konsumsi", color="#ff7f0e")
-ax.bar(df_prov["Tahun"], df_prov["Surplus"], alpha=0.3, label="Surplus")
+st.subheader(f"Hasil Prediksi {tahun_pred}")
+st.markdown(f"""
+- **Produksi**: {pred_prod:,.0f} ton  
+- **Konsumsi**: {pred_kons:,.0f} ton  
+- **Surplus**: {pred_surplus:,.0f} ton  
+- **Status**: {"🟢 Surplus" if pred_surplus>0 else "🔴 Defisit"}
+""")
 
-ax.set_title(f"Tren Produksi, Konsumsi, dan Surplus – {provinsi} ({komoditas})", fontsize=14)
+# -------------------------
+# 7. VISUALISASI TREND
+# -------------------------
+future_years = list(range(2024, 2029))
+X_future = pd.DataFrame({
+    "Tahun": future_years,
+    "Provinsi_enc": [prov_enc]*len(future_years),
+    "Komoditas_enc": [komod_enc]*len(future_years)
+})
+
+future_prod = model_prod.predict(X_future)
+future_kons = model_kons.predict(X_future)
+future_surplus = future_prod - future_kons
+
+fig, ax = plt.subplots(figsize=(10,5))
+ax.plot(future_years, future_prod, marker="o", label="Produksi")
+ax.plot(future_years, future_kons, marker="s", label="Konsumsi")
+ax.bar(future_years, future_surplus, alpha=0.3, label="Surplus")
+ax.set_title(f"Prediksi Tren 2024–2028 – {provinsi} ({komoditas})")
 ax.set_xlabel("Tahun")
 ax.set_ylabel("Ton")
 ax.legend()
-ax.grid(alpha=0.3)
-
 st.pyplot(fig)
-
-# ---------- 5. FOOTER ----------
-st.markdown("---")
-st.caption("Dibuat untuk prediksi pangan Indonesia 2018–2028 menggunakan data historis dan proyeksi forecast.")
