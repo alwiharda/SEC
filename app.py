@@ -1,101 +1,94 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import joblib
+import xgboost as xgb
 import matplotlib.pyplot as plt
-from xgboost import XGBRegressor
+import pathlib
 
-# ==========================================================
-# Fungsi Training & Forecast
-# ==========================================================
-def train_and_forecast(df_in, target_col, n_forecast=3):
-    # fitur input yang dipakai
-    fitur = ["Tahun", "curah hujan (mm)", "suhu (C)", "Jumlah Penduduk", "PDRB (tahunan)"]
-    fitur = [f for f in fitur if f in df_in.columns]
+# =====================================================
+# 1. LOAD DATA & MODEL
+# =====================================================
+DATA_FILE = r"prediksi permintaan (3).xlsx"
+MODEL_DIR = pathlib.Path("model_output")
 
-    # siapkan data
-    X = df_in[fitur]
-    y = df_in[target_col]
+df = pd.read_excel(DATA_FILE, sheet_name="Sheet1")
+df.columns = df.columns.str.strip().str.lower()
 
-    # train model
-    model = XGBRegressor(
-        n_estimators=300,
-        learning_rate=0.1,
-        max_depth=4,
-        random_state=42
-    )
-    model.fit(X, y)
+# identifikasi nama kolom target
+konsumsi_col = [c for c in df.columns if "konsumsi" in c and "ton" in c][0]
+produksi_col = [c for c in df.columns if "produksi" in c][0]
 
-    # buat data prediksi
-    tahun_max = int(df_in["Tahun"].max())
-    pred_rows = []
-    last_row = df_in.iloc[-1].to_dict()
+df["konsumsi (ton)"] = pd.to_numeric(df[konsumsi_col], errors="coerce")
+df["produksi"] = pd.to_numeric(df[produksi_col], errors="coerce")
 
-    for i in range(1, n_forecast + 1):
-        tahun_next = tahun_max + i
-        row_pred = {k: last_row[k] for k in fitur if k != "Tahun"}
-        row_pred["Tahun"] = tahun_next
-        pred_rows.append(row_pred)
+FEAT_BASE = ["curah hujan (mm)", "suhu (c)", "jumlah penduduk", "pdrb (tahunan)"]
 
-    X_pred = pd.DataFrame(pred_rows)[fitur]   # urutan kolom sama
-    y_pred = model.predict(X_pred)
+# =====================================================
+# 2. STREAMLIT UI
+# =====================================================
+st.title("📊 Prediksi Produksi & Konsumsi Pangan")
+st.markdown("Prediksi berbasis **XGBoost** untuk 3 tahun ke depan.")
 
-    df_pred = X_pred.copy()
-    df_pred[target_col] = y_pred
-    return df_pred, model
+provinsi = st.selectbox("Pilih Provinsi", sorted(df["provinsi"].unique()))
+komoditas = st.selectbox("Pilih Komoditas", sorted(df["komoditas"].unique()))
+target = st.radio("Pilih Target", ["Produksi", "Konsumsi (ton)"])
 
-# ==========================================================
-# Aplikasi Streamlit (tanpa upload file)
-# ==========================================================
-st.set_page_config(page_title="Prediksi Surplus Pangan", layout="wide")
-st.title("📊 Prediksi Produksi, Konsumsi & Surplus Pangan")
+# filter data sesuai pilihan
+df_sel = df[(df["provinsi"] == provinsi) & (df["komoditas"] == komoditas)].copy()
+df_sel = df_sel.sort_values("tahun")
 
-# baca data langsung
-FILE = "prediksi permintaan (3).xlsx"
-df = pd.read_excel(FILE)
+st.subheader("📑 Data Aktual")
+st.dataframe(df_sel[["tahun", "produksi", "konsumsi (ton)"]])
 
-# pilih provinsi & komoditas
-provinsi = st.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
-komoditas = st.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
+# =====================================================
+# 3. LOAD MODEL
+# =====================================================
+target_col = target.lower()
+model_file = MODEL_DIR / f"{target_col}_{komoditas}.pkl"
+if not model_file.exists():
+    st.error("Model belum tersedia untuk komoditas ini.")
+    st.stop()
 
-df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)].copy()
+mdl = joblib.load(model_file)
+model, feat = mdl["model"], mdl["feat"]
 
-if len(df_filtered) > 3:
-    # training produksi & konsumsi
-    df_pred_prod, model_prod = train_and_forecast(df_filtered, "produksi", n_forecast=3)
-    df_pred_kons, model_kons = train_and_forecast(df_filtered, "konsumsi (ton)", n_forecast=3)
+# =====================================================
+# 4. PREDIKSI 3 TAHUN KE DEPAN (REKURSIF)
+# =====================================================
+tahun_max = df_sel["tahun"].max()
+pred_years = [tahun_max + i for i in range(1, 4)]
+df_pred = df_sel.copy()
 
-    # gabungkan hasil prediksi
-    df_forecast = pd.DataFrame({
-        "Tahun": df_pred_prod["Tahun"],
-        "Produksi": df_pred_prod["produksi"],
-        "Konsumsi": df_pred_kons["konsumsi (ton)"]
-    })
-    df_forecast["Surplus"] = df_forecast["Produksi"] - df_forecast["Konsumsi"]
+for tahun in pred_years:
+    df_next = df_pred[df_pred["tahun"] == df_pred["tahun"].max()].copy()
+    df_next["tahun"] = tahun
 
-    # gabung data asli + prediksi
-    df_show = pd.concat([
-        df_filtered[["Tahun", "produksi", "konsumsi (ton)"]].rename(columns={"produksi": "Produksi", "konsumsi (ton)": "Konsumsi"}),
-        df_forecast
-    ], ignore_index=True)
+    # update lag
+    df_next[f"{target_col}_lag2"] = df_next[f"{target_col}_lag1"]
+    df_next[f"{target_col}_lag1"] = df_next[target_col]
 
-    # tampilkan tabel hasil
-    st.subheader(f"📑 Data & Prediksi {komoditas} — {provinsi}")
-    st.dataframe(df_show.tail(7))
+    X_new = df_next[feat]
+    y_pred = np.expm1(model.predict(X_new))
 
-    # plot
-    fig, ax = plt.subplots(figsize=(10, 5))
-    tahun = df_show["Tahun"]
-    ax.plot(tahun, df_show["Produksi"], marker="o", label="Produksi")
-    ax.plot(tahun, df_show["Konsumsi"], marker="s", label="Konsumsi")
-    ax.bar(tahun, df_show["Surplus"], alpha=0.3, label="Surplus")
+    df_next[target_col] = y_pred
+    df_next = df_next[["provinsi", "komoditas", "tahun", target_col,
+                       f"{target_col}_lag1", f"{target_col}_lag2"]]
 
-    tahun_max = df_filtered["Tahun"].max()
-    ax.axvline(x=tahun_max + 0.5, color="red", linestyle="--", label="Prediksi dimulai")
+    df_pred = pd.concat([df_pred, df_next], ignore_index=True)
 
-    ax.set_title(f"Data & Prediksi Surplus — {provinsi} ({komoditas})")
-    ax.set_xlabel("Tahun")
-    ax.set_ylabel("Jumlah (ton)")
-    ax.legend()
-    st.pyplot(fig)
+# =====================================================
+# 5. VISUALISASI
+# =====================================================
+plt.figure(figsize=(8, 4))
+plt.plot(df_sel["tahun"], df_sel[target_col], marker="o", label="Aktual")
+plt.plot(pred_years, df_pred[df_pred["tahun"].isin(pred_years)][target_col],
+         marker="o", linestyle="--", color="red", label="Prediksi")
+plt.xlabel("Tahun")
+plt.ylabel(target)
+plt.title(f"{target} {komoditas} di {provinsi}")
+plt.legend()
+st.pyplot(plt)
 
-else:
-    st.warning("Data terlalu sedikit untuk membuat prediksi.")
+st.subheader("📈 Hasil Prediksi")
+st.dataframe(df_pred[df_pred["tahun"].isin(pred_years)][["tahun", target_col]])
