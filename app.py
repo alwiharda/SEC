@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 # -------------------------
 # 1. LOAD DATA
 # -------------------------
-FILE = "prediksi_permintaan (3).xlsx"
+FILE = "prediksi permintaan (3).xlsx"
 
 df = pd.read_excel(FILE)
 df.columns = df.columns.str.strip()
@@ -130,3 +130,4 @@ ax.set_xlabel("Tahun")
 ax.set_ylabel("Ton")
 ax.legend()
 st.pyplot(fig)
+
