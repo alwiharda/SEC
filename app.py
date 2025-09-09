@@ -1,113 +1,95 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-# ==============================
-# CONFIGURASI HALAMAN
-# ==============================
-st.set_page_config(page_title="Dashboard Prediksi Komoditas", layout="wide")
+# =====================================================
+# 1. Load Data
+# =====================================================
+@st.cache_data
+def load_data():
+    # Data forecast 2024–2028
+    df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
+    return df_forecast
 
-# ==============================
-# CSS TAMPILAN
-# ==============================
-st.markdown("""
+df = load_data()
+
+# =====================================================
+# 2. Sidebar
+# =====================================================
+st.set_page_config(page_title="Dashboard Prediksi Pangan", layout="wide")
+
+st.markdown(
+    """
     <style>
-    body {
-        background-color: #f9fafc;
-    }
     .main {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        background-color: #f9f9f9;
     }
-    h1, h2, h3 {
+    .stSidebar {
+        background-color: #2c3e50;
+    }
+    h1 {
         color: #2c3e50;
+        text-align: center;
+    }
+    .stSelectbox label, .stRadio label {
+        font-weight: bold;
     }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-# ==============================
-# LOAD DATA
-# ==============================
-df_aktual = pd.read_excel("prediksi permintaan (3).xlsx")
-df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas.xlsx")
+st.title("📊 Dashboard Prediksi Produksi & Konsumsi Pangan (2024–2028)")
 
-# Ambil kolom penting
-df_aktual = df_aktual[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
-df_forecast = df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)"]]
+# Dropdown filter
+provinsi = st.sidebar.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
+komoditas = st.sidebar.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
 
-# Pastikan data sesuai tahun
-df_aktual = df_aktual[df_aktual["Tahun"] <= 2023]
-df_forecast = df_forecast[df_forecast["Tahun"] >= 2024]
+# Tambahkan opsi "Semua Tahun"
+tahun_options = ["Semua Tahun"] + sorted(df["Tahun"].unique().astype(str).tolist())
+tahun = st.sidebar.selectbox("Pilih Tahun", tahun_options)
 
-# Gabungkan
-df_all = pd.concat([df_aktual, df_forecast], ignore_index=True)
+# =====================================================
+# 3. Filter Data
+# =====================================================
+df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)]
 
-# Hitung surplus
-df_all["surplus"] = df_all["produksi"] - df_all["konsumsi (ton)"]
+if tahun != "Semua Tahun":
+    df_filtered = df_filtered[df_filtered["Tahun"] == int(tahun)]
 
-# ==============================
-# SIDEBAR FILTER
-# ==============================
-st.sidebar.header("Filter Data")
+# =====================================================
+# 4. Visualisasi
+# =====================================================
+st.subheader(f"📍 Data {komoditas} di {provinsi}")
 
-provinsi_list = df_all["Provinsi"].unique().tolist()
-komoditas_list = df_all["Komoditas"].unique().tolist()
-tahun_list = sorted(df_all["Tahun"].unique().tolist())
+col1, col2 = st.columns(2)
 
-provinsi = st.sidebar.selectbox("Pilih Provinsi", provinsi_list)
-komoditas = st.sidebar.selectbox("Pilih Komoditas", komoditas_list)
-tahun = st.sidebar.multiselect("Pilih Tahun", tahun_list, default=tahun_list)
+with col1:
+    fig1 = px.bar(
+        df_filtered,
+        x="Tahun",
+        y=["produksi", "konsumsi (ton)"],
+        barmode="group",
+        title="Produksi vs Konsumsi",
+        labels={"value": "Jumlah (ton)", "Tahun": "Tahun"}
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
-# ==============================
-# FILTER DATA
-# ==============================
-df_filtered = df_all[
-    (df_all["Provinsi"] == provinsi) &
-    (df_all["Komoditas"] == komoditas) &
-    (df_all["Tahun"].isin(tahun))
-]
+with col2:
+    fig2 = px.line(
+        df_filtered,
+        x="Tahun",
+        y="Stok",
+        title="Stok (Surplus/Defisit)",
+        markers=True
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 
-# ==============================
-# TAMPILKAN DATA
-# ==============================
-st.title("📊 Dashboard Prediksi Komoditas")
-st.subheader(f"Provinsi: {provinsi} | Komoditas: {komoditas}")
-
-st.dataframe(df_filtered, use_container_width=True)
-
-# ==============================
-# VISUALISASI 1: Tren per Provinsi
-# ==============================
-st.markdown("### Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
-
-fig, ax = plt.subplots(figsize=(10,5))
-ax.plot(df_filtered["Tahun"], df_filtered["produksi"], marker="o", label="Produksi")
-ax.plot(df_filtered["Tahun"], df_filtered["konsumsi (ton)"], marker="o", label="Konsumsi")
-ax.plot(df_filtered["Tahun"], df_filtered["surplus"], marker="o", label="Surplus")
-
-ax.set_title(f"Tren {komoditas} di {provinsi}", fontsize=14)
-ax.set_ylabel("Jumlah (ton)")
-ax.legend()
-st.pyplot(fig)
-
-# ==============================
-# VISUALISASI 2: Gabungan Semua Provinsi
-# ==============================
-st.markdown("### Perbandingan Antar Provinsi (2018–2028)")
-
-df_compare = df_all[
-    (df_all["Komoditas"] == komoditas) &
-    (df_all["Tahun"].isin(tahun))
-]
-
-fig2, ax2 = plt.subplots(figsize=(12,6))
-for prov in df_compare["Provinsi"].unique():
-    df_temp = df_compare[df_compare["Provinsi"] == prov]
-    ax2.plot(df_temp["Tahun"], df_temp["produksi"], marker="o", label=prov)
-
-ax2.set_title(f"Perbandingan Produksi {komoditas} Antar Provinsi", fontsize=14)
-ax2.set_ylabel("Jumlah (ton)")
-ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-st.pyplot(fig2)
+# =====================================================
+# 5. Tabel Data
+# =====================================================
+st.subheader("📋 Tabel Data")
+st.dataframe(
+    df_filtered[["Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]],
+    use_container_width=True
+)
