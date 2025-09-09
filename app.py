@@ -7,8 +7,8 @@ from xgboost import XGBRegressor
 # Fungsi Training & Forecast
 # ==========================================================
 def train_and_forecast(df_in, target_col, n_forecast=3):
-    # pakai fitur tambahan selain tahun
-    fitur = ["Tahun", "curah hujan (mm)", "suhu (c)", "jumlah penduduk", "pdrb (tahunan)"]
+    # fitur input yang dipakai
+    fitur = ["Tahun", "curah hujan (mm)", "suhu (C)", "Jumlah Penduduk", "PDRB (tahunan)"]
     fitur = [f for f in fitur if f in df_in.columns]
 
     # siapkan data
@@ -35,7 +35,7 @@ def train_and_forecast(df_in, target_col, n_forecast=3):
         row_pred["Tahun"] = tahun_next
         pred_rows.append(row_pred)
 
-    X_pred = pd.DataFrame(pred_rows)[fitur]   # <- urutan kolom sama
+    X_pred = pd.DataFrame(pred_rows)[fitur]   # urutan kolom sama
     y_pred = model.predict(X_pred)
 
     df_pred = X_pred.copy()
@@ -60,21 +60,21 @@ df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)].
 
 if len(df_filtered) > 3:
     # training produksi & konsumsi
-    df_pred_prod, model_prod = train_and_forecast(df_filtered, "Produksi", n_forecast=3)
-    df_pred_kons, model_kons = train_and_forecast(df_filtered, "Konsumsi (ton)", n_forecast=3)
+    df_pred_prod, model_prod = train_and_forecast(df_filtered, "produksi", n_forecast=3)
+    df_pred_kons, model_kons = train_and_forecast(df_filtered, "konsumsi (ton)", n_forecast=3)
 
     # gabungkan hasil prediksi
     df_forecast = pd.DataFrame({
         "Tahun": df_pred_prod["Tahun"],
-        "Produksi": df_pred_prod["Produksi"],
-        "Konsumsi": df_pred_kons["Konsumsi (ton)"]
+        "Produksi": df_pred_prod["produksi"],
+        "Konsumsi": df_pred_kons["konsumsi (ton)"]
     })
     df_forecast["Surplus"] = df_forecast["Produksi"] - df_forecast["Konsumsi"]
 
     # gabung data asli + prediksi
     df_show = pd.concat([
-        df_filtered[["Tahun", "Produksi", "Konsumsi (ton)"]].rename(columns={"Konsumsi (ton)": "Konsumsi"}),
-        df_forecast.rename(columns={"Konsumsi (ton)": "Konsumsi"})
+        df_filtered[["Tahun", "produksi", "konsumsi (ton)"]].rename(columns={"produksi": "Produksi", "konsumsi (ton)": "Konsumsi"}),
+        df_forecast
     ], ignore_index=True)
 
     # tampilkan tabel hasil
@@ -99,4 +99,3 @@ if len(df_filtered) > 3:
 
 else:
     st.warning("Data terlalu sedikit untuk membuat prediksi.")
-
