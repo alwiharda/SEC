@@ -14,30 +14,36 @@ FILE = "prediksi permintaan (3).xlsx"
 
 df = pd.read_excel(FILE)
 
-# Normalisasi nama kolom biar aman
-df.columns = df.columns.str.strip()
+# Normalisasi nama kolom
+df.columns = df.columns.str.strip().str.lower()  # jadi huruf kecil semua
 
-# Pastikan ada kolom Tahun, Provinsi, Komoditas, Produksi, Konsumsi
-st.write("📌 Data yang terbaca:", df.head())
+st.write("Kolom terbaca:", df.columns.tolist())
 
 # ============================================================
 # 2. INPUT USER
 # ============================================================
-provinsi = st.selectbox("Pilih Provinsi:", df["Provinsi"].unique())
-komoditas = st.selectbox("Pilih Komoditas:", df["Komoditas"].unique())
+# Cari nama kolom sesuai
+col_tahun = [c for c in df.columns if "tahun" in c][0]
+col_prov = [c for c in df.columns if "prov" in c][0]
+col_kom = [c for c in df.columns if "komod" in c][0]
+col_prod = [c for c in df.columns if "produ" in c][0]
+col_kons = [c for c in df.columns if "kons" in c][0]
+
+provinsi = st.selectbox("Pilih Provinsi:", df[col_prov].unique())
+komoditas = st.selectbox("Pilih Komoditas:", df[col_kom].unique())
 
 # ============================================================
 # 3. FILTER DATA
 # ============================================================
-df_filtered = df[(df["Provinsi"]==provinsi) & (df["Komoditas"]==komoditas)].copy()
-df_filtered = df_filtered.sort_values("Tahun")
+df_filtered = df[(df[col_prov]==provinsi) & (df[col_kom]==komoditas)].copy()
+df_filtered = df_filtered.sort_values(col_tahun)
 
 # ============================================================
-# 4. FIT MODEL LINEAR REGRESSION
+# 4. FIT MODEL
 # ============================================================
-X = df_filtered[["Tahun"]]
-y_prod = df_filtered["Produksi"]
-y_kons = df_filtered["Konsumsi"]
+X = df_filtered[[col_tahun]]
+y_prod = df_filtered[col_prod]
+y_kons = df_filtered[col_kons]
 
 model_prod = LinearRegression().fit(X, y_prod)
 model_kons = LinearRegression().fit(X, y_kons)
@@ -45,7 +51,7 @@ model_kons = LinearRegression().fit(X, y_kons)
 # ============================================================
 # 5. PREDIKSI
 # ============================================================
-next_year = df_filtered["Tahun"].max() + 1
+next_year = df_filtered[col_tahun].max() + 1
 pred_prod = model_prod.predict([[next_year]])[0]
 pred_kons = model_kons.predict([[next_year]])[0]
 pred_surplus = pred_prod - pred_kons
@@ -62,30 +68,27 @@ st.markdown(f"""
 """)
 
 # ============================================================
-# 7. VISUALISASI TREND
+# 7. VISUALISASI
 # ============================================================
-# Tambahkan prediksi ke DataFrame untuk diplot
 df_pred = pd.DataFrame({
-    "Tahun": [next_year],
-    "Produksi": [pred_prod],
-    "Konsumsi": [pred_kons]
+    col_tahun: [next_year],
+    col_prod: [pred_prod],
+    col_kons: [pred_kons]
 })
 df_plot = pd.concat([df_filtered, df_pred], ignore_index=True)
 
 fig, ax = plt.subplots(figsize=(10,5))
 
-# Garis Produksi & Konsumsi (termasuk prediksi)
-ax.plot(df_plot["Tahun"], df_plot["Produksi"], marker="o", label="Produksi")
-ax.plot(df_plot["Tahun"], df_plot["Konsumsi"], marker="s", label="Konsumsi")
+ax.plot(df_plot[col_tahun], df_plot[col_prod], marker="o", label="Produksi")
+ax.plot(df_plot[col_tahun], df_plot[col_kons], marker="s", label="Konsumsi")
 
 # Bar Surplus historis
-ax.bar(df_filtered["Tahun"], df_filtered["Produksi"]-df_filtered["Konsumsi"],
+ax.bar(df_filtered[col_tahun], df_filtered[col_prod]-df_filtered[col_kons],
        alpha=0.3, label="Surplus")
 
 # Bar Surplus prediksi
 ax.bar(next_year, pred_surplus, alpha=0.3, color="gray", label="Surplus Prediksi")
 
-# Garis vertikal tahun prediksi
 ax.axvline(x=next_year, color="red", linestyle="--", label="Prediksi Tahun Berikutnya")
 
 ax.set_title(f"Data & Prediksi Surplus — {provinsi} ({komoditas})")
