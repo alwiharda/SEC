@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 # ==============================
 # CONFIGURASI HALAMAN
@@ -83,9 +82,9 @@ st.dataframe(df_filtered, use_container_width=True)
 st.markdown("### Tren Produksi, Konsumsi, dan Surplus (2018–2028)")
 
 fig, ax = plt.subplots(figsize=(10,5))
-sns.lineplot(data=df_filtered, x="Tahun", y="produksi", marker="o", label="Produksi", ax=ax)
-sns.lineplot(data=df_filtered, x="Tahun", y="konsumsi (ton)", marker="o", label="Konsumsi", ax=ax)
-sns.lineplot(data=df_filtered, x="Tahun", y="surplus", marker="o", label="Surplus", ax=ax)
+ax.plot(df_filtered["Tahun"], df_filtered["produksi"], marker="o", label="Produksi")
+ax.plot(df_filtered["Tahun"], df_filtered["konsumsi (ton)"], marker="o", label="Konsumsi")
+ax.plot(df_filtered["Tahun"], df_filtered["surplus"], marker="o", label="Surplus")
 
 ax.set_title(f"Tren {komoditas} di {provinsi}", fontsize=14)
 ax.set_ylabel("Jumlah (ton)")
@@ -103,7 +102,11 @@ df_compare = df_all[
 ]
 
 fig2, ax2 = plt.subplots(figsize=(12,6))
-sns.lineplot(data=df_compare, x="Tahun", y="produksi", hue="Provinsi", ax=ax2)
+for prov in df_compare["Provinsi"].unique():
+    df_temp = df_compare[df_compare["Provinsi"] == prov]
+    ax2.plot(df_temp["Tahun"], df_temp["produksi"], marker="o", label=prov)
+
 ax2.set_title(f"Perbandingan Produksi {komoditas} Antar Provinsi", fontsize=14)
 ax2.set_ylabel("Jumlah (ton)")
+ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 st.pyplot(fig2)
