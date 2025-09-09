@@ -1,111 +1,97 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-import xgboost as xgb
+from xgboost import XGBRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
-# ============================================================
-# 1. Load Data
-# ============================================================
-DATA_FILE = "prediksi permintaan (3).xlsx"
+# =========================================================
+# 1. LOAD DATA
+# =========================================================
+FILE = "prediksi permintaan (3).xlsx"
+df = pd.read_excel(FILE)
 
-@st.cache_data
-def load_data():
-    df = pd.read_excel(DATA_FILE)
-    return df
+# rapikan nama kolom
+df.columns = df.columns.str.strip().str.lower()
+df = df.rename(columns={
+    "provinsi": "Provinsi",
+    "komoditas": "Komoditas",
+    "tahun": "Tahun",
+    "produksi": "Produksi",
+    "konsumsi (ton)": "Konsumsi"
+})
 
-df = load_data()
-
-# ============================================================
-# 2. Sidebar Pilihan
-# ============================================================
-st.sidebar.header("🔎 Pilih Parameter")
+# =========================================================
+# 2. SIDEBAR FILTER
+# =========================================================
+st.sidebar.header("Filter Data")
 provinsi = st.sidebar.selectbox("Pilih Provinsi", sorted(df["Provinsi"].unique()))
 komoditas = st.sidebar.selectbox("Pilih Komoditas", sorted(df["Komoditas"].unique()))
 
-# Filter data
-df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)].copy()
-df_filtered = df_filtered.sort_values("Tahun")
+df_sel = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)].copy()
+df_sel = df_sel.sort_values("Tahun")
 
-col_prod = "produksi"
-col_kons = "konsumsi (ton)"
+# =========================================================
+# 3. TRAIN MODEL XGBOOST
+# =========================================================
+def train_and_forecast(df_in, col_target, n_forecast=3):
+    X = df_in[["Tahun"]]
+    y = df_in[col_target]
 
-# Hitung surplus aktual
-df_filtered["Surplus"] = df_filtered[col_prod] - df_filtered[col_kons]
+    model = XGBRegressor(n_estimators=200, learning_rate=0.1, max_depth=3, random_state=42)
+    model.fit(X, y)
 
-# ============================================================
-# 3. Input Data Tahun Terbaru
-# ============================================================
-st.sidebar.subheader("➕ Input Data Tahun Terbaru")
-tahun_input = st.sidebar.number_input("Tahun", min_value=int(df_filtered["Tahun"].max())+1, step=1, value=int(df_filtered["Tahun"].max())+1)
-produksi_input = st.sidebar.number_input("Produksi (ton)", min_value=0.0, step=1000.0, value=0.0)
-konsumsi_input = st.sidebar.number_input("Konsumsi (ton)", min_value=0.0, step=1000.0, value=0.0)
+    tahun_max = df_in["Tahun"].max()
+    tahun_pred = np.arange(tahun_max + 1, tahun_max + n_forecast + 1)
 
-if st.sidebar.button("Tambahkan Data"):
-    new_row = {
-        "Provinsi": provinsi,
-        "Komoditas": komoditas,
-        "Tahun": tahun_input,
-        col_prod: produksi_input,
-        col_kons: konsumsi_input,
-        "Surplus": produksi_input - konsumsi_input
-    }
-    df_filtered = pd.concat([df_filtered, pd.DataFrame([new_row])], ignore_index=True)
-    st.success(f"Data tahun {tahun_input} berhasil ditambahkan!")
+    y_pred = model.predict(tahun_pred.reshape(-1, 1))
 
-# ============================================================
-# 4. Train Model
-# ============================================================
-X = df_filtered[["Tahun"]]
-y_prod = df_filtered[col_prod]
-y_kons = df_filtered[col_kons]
+    df_pred = pd.DataFrame({"Tahun": tahun_pred, col_target: y_pred})
+    return df_pred, model
 
-model_prod = xgb.XGBRegressor(n_estimators=200, learning_rate=0.1, max_depth=3)
-model_prod.fit(X, y_prod)
+# Prediksi produksi dan konsumsi 3 tahun ke depan
+df_pred_prod, model_prod = train_and_forecast(df_sel, "Produksi", n_forecast=3)
+df_pred_kons, model_kons = train_and_forecast(df_sel, "Konsumsi", n_forecast=3)
 
-model_kons = xgb.XGBRegressor(n_estimators=200, learning_rate=0.1, max_depth=3)
-model_kons.fit(X, y_kons)
+# gabungkan hasil prediksi
+df_pred = pd.merge(df_pred_prod, df_pred_kons, on="Tahun")
+df_pred["Surplus"] = df_pred["Produksi"] - df_pred["Konsumsi"]
 
-# ============================================================
-# 5. Prediksi 5 Tahun ke Depan
-# ============================================================
-tahun_terakhir = int(df_filtered["Tahun"].max())
-tahun_prediksi = list(range(tahun_terakhir+1, tahun_terakhir+6))
+# gabungkan historis + prediksi
+df_all = pd.concat([df_sel[["Tahun", "Produksi", "Konsumsi"]], df_pred], ignore_index=True)
+df_all["Surplus"] = df_all["Produksi"] - df_all["Konsumsi"]
 
-X_pred = pd.DataFrame({"Tahun": tahun_prediksi})
-y_pred_prod = model_prod.predict(X_pred)
-y_pred_kons = model_kons.predict(X_pred)
-y_pred_surplus = y_pred_prod - y_pred_kons
+# =========================================================
+# 4. VISUALISASI
+# =========================================================
+st.subheader(f"Prediksi 3 Tahun ke Depan – {provinsi} ({komoditas})")
 
-df_pred = pd.DataFrame({
-    "Tahun": tahun_prediksi,
-    "Produksi (Prediksi)": y_pred_prod,
-    "Konsumsi (Prediksi)": y_pred_kons,
-    "Surplus (Prediksi)": y_pred_surplus
-})
+# tampilkan tabel
+st.write("### Data Historis + Prediksi")
+st.dataframe(df_all)
 
-# ============================================================
-# 6. Tampilkan Hasil Prediksi
-# ============================================================
-st.subheader("📊 Prediksi 5 Tahun ke Depan")
-st.dataframe(df_pred.style.format("{:,.0f}"))
+# plot grafik
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(df_sel["Tahun"], df_sel["Produksi"], marker="o", color="green", label="Produksi (Hist)")
+ax.plot(df_sel["Tahun"], df_sel["Konsumsi"], marker="o", color="red", label="Konsumsi (Hist)")
 
-# ============================================================
-# 7. Visualisasi
-# ============================================================
-fig, ax = plt.subplots(figsize=(10,6))
+ax.plot(df_pred["Tahun"], df_pred["Produksi"], marker="s", linestyle="--", color="lime", label="Produksi (Prediksi)")
+ax.plot(df_pred["Tahun"], df_pred["Konsumsi"], marker="s", linestyle="--", color="orange", label="Konsumsi (Prediksi)")
 
-# Plot data historis
-ax.plot(df_filtered["Tahun"], df_filtered[col_prod], marker="o", label="Produksi Aktual")
-ax.plot(df_filtered["Tahun"], df_filtered[col_kons], marker="s", label="Konsumsi Aktual")
-ax.bar(df_filtered["Tahun"], df_filtered["Surplus"], alpha=0.3, label="Surplus Aktual")
-
-# Plot prediksi
-ax.plot(df_pred["Tahun"], df_pred["Produksi (Prediksi)"], marker="o", linestyle="--", color="blue", label="Produksi Prediksi")
-ax.plot(df_pred["Tahun"], df_pred["Konsumsi (Prediksi)"], marker="s", linestyle="--", color="orange", label="Konsumsi Prediksi")
-ax.bar(df_pred["Tahun"], df_pred["Surplus (Prediksi)"], alpha=0.3, color="gray", label="Surplus Prediksi")
-
-ax.set_title(f"Data & Prediksi Surplus — {provinsi} ({komoditas})")
+ax.axhline(0, color="black", linewidth=0.8)
+ax.set_title(f"Prediksi Produksi & Konsumsi {provinsi} – {komoditas}", fontsize=14)
 ax.set_xlabel("Tahun")
-ax.set_ylabel("Jumlah (ton)")
+ax.set_ylabel("Ton")
 ax.legend()
+ax.grid(True, alpha=0.3)
+
 st.pyplot(fig)
+
+# =========================================================
+# 5. INFO SURPLUS / DEFISIT
+# =========================================================
+st.write("### Status Surplus / Defisit (Prediksi)")
+for _, row in df_pred.iterrows():
+    status = "✅ Surplus" if row["Surplus"] > 0 else "❌ Defisit"
+    st.write(f"Tahun {int(row['Tahun'])}: {status} ({row['Surplus']:.0f} ton)")
