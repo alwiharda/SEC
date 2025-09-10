@@ -38,7 +38,7 @@ def load_data():
     # Data prediksi 2024–2028
     df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas (5).xlsx")
 
-    # Hitung stok
+    # Hitung stok ulang untuk histori & forecast
     df_hist["Stok"] = df_hist["produksi"] - df_hist["konsumsi (ton)"]
     df_hist["Status"] = df_hist["Stok"].apply(lambda x: "Surplus" if x >= 0 else "Defisit")
 
@@ -91,11 +91,11 @@ if provinsi != "Semua Provinsi":
 
     with col2:
         fig, ax = plt.subplots()
-        stok_val = df_filtered["Stok"]  # pakai nilai asli
+        stok_val = df_filtered["Stok"]
         colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
 
         ax.bar(df_filtered["Tahun"], stok_val, color=colors)
-        ax.axhline(0, color="black", linestyle="--")  # garis nol
+        ax.axhline(0, color="black", linestyle="--")
         ax.set_ylabel("Stok (ton)")
         ax.set_title("Stok (Surplus/Defisit)")
 
@@ -107,7 +107,7 @@ if provinsi != "Semua Provinsi":
         st.pyplot(fig)
 
 # =========================================================
-# 5. Plot Surplus/Defisit Semua Provinsi
+# 5. Plot Surplus/Defisit Semua Provinsi (pakai kolom Stok)
 # =========================================================
 st.subheader(f"📊 Tren Surplus/Defisit {komoditas} di Semua Provinsi")
 
@@ -115,12 +115,12 @@ df_komoditas = df[df["Komoditas"] == komoditas]
 
 fig, ax = plt.subplots()
 
-# Plot stok asli (positif/negatif sesuai data)
+# Garis per provinsi pakai stok asli
 for prov in df_komoditas["Provinsi"].unique():
     df_prov = df_komoditas[df_komoditas["Provinsi"] == prov]
     ax.plot(
         df_prov["Tahun"],
-        df_prov["Stok"],
+        df_prov["Stok"],  # langsung pakai kolom Stok
         marker="o",
         label=prov
     )
