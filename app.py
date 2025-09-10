@@ -42,6 +42,9 @@ def load_data():
     df_hist["Stok"] = df_hist["produksi"] - df_hist["konsumsi (ton)"]
     df_hist["Status"] = df_hist["Stok"].apply(lambda x: "Surplus" if x >= 0 else "Defisit")
 
+    df_forecast["Stok"] = df_forecast["produksi"] - df_forecast["konsumsi (ton)"]
+    df_forecast["Status"] = df_forecast["Stok"].apply(lambda x: "Surplus" if x >= 0 else "Defisit")
+
     df_all = pd.concat([
         df_hist[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]],
         df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]]
@@ -70,7 +73,7 @@ if tahun != "Semua Tahun":
     df_filtered = df_filtered[df_filtered["Tahun"] == int(tahun)]
 
 # =========================================================
-# 4. Visualisasi
+# 4. Visualisasi Produksi & Konsumsi + Stok (per provinsi)
 # =========================================================
 if provinsi != "Semua Provinsi":
     st.subheader(f"📍 Data {komoditas} di {provinsi}")
@@ -88,11 +91,12 @@ if provinsi != "Semua Provinsi":
 
     with col2:
         fig, ax = plt.subplots()
-        stok_abs = df_filtered["Stok"].abs()
+        stok_val = df_filtered["Stok"]  # pakai nilai asli
         colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
 
-        ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
-        ax.set_ylabel("Stok (Absolut)")
+        ax.bar(df_filtered["Tahun"], stok_val, color=colors)
+        ax.axhline(0, color="black", linestyle="--")  # garis nol
+        ax.set_ylabel("Stok (ton)")
         ax.set_title("Stok (Surplus/Defisit)")
 
         legend_elements = [
@@ -110,18 +114,29 @@ st.subheader(f"📊 Tren Surplus/Defisit {komoditas} di Semua Provinsi")
 df_komoditas = df[df["Komoditas"] == komoditas]
 
 fig, ax = plt.subplots()
+
+# Plot stok asli (positif/negatif sesuai data)
 for prov in df_komoditas["Provinsi"].unique():
     df_prov = df_komoditas[df_komoditas["Provinsi"] == prov]
-    ax.plot(df_prov["Tahun"], df_prov["Stok"], marker="o", label=prov)
+    ax.plot(
+        df_prov["Tahun"],
+        df_prov["Stok"],
+        marker="o",
+        label=prov
+    )
 
 ax.axhline(0, color="black", linestyle="--")
 ax.set_ylabel("Surplus / Defisit (ton)")
 ax.set_title(f"Tren Surplus/Defisit {komoditas} di Semua Provinsi")
 ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
 st.pyplot(fig)
 
 # =========================================================
 # 6. Tabel Data
 # =========================================================
 st.subheader("📋 Tabel Data")
-st.dataframe(df_filtered[["Provinsi", "Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]], use_container_width=True)
+st.dataframe(
+    df_filtered[["Provinsi", "Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]],
+    use_container_width=True
+)
