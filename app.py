@@ -64,7 +64,7 @@ if tahun != "Semua Tahun":
     df_filtered = df_filtered[df_filtered["Tahun"] == int(tahun)]
 
 # =========================================================
-# 4. Visualisasi
+# 4. Visualisasi (Produksi & Konsumsi + Stok)
 # =========================================================
 st.subheader(f"📍 Data {komoditas} di {provinsi}")
 
@@ -100,21 +100,23 @@ with col2:
     st.pyplot(fig)
 
 # =========================================================
-# 5. Plot Gabungan Semua Provinsi
+# 5. Plot Surplus/Defisit Semua Provinsi
 # =========================================================
-st.subheader(f"📊 Tren Produksi dan Konsumsi {komoditas} di Semua Provinsi")
+st.subheader(f"📊 Tren Surplus/Defisit {komoditas} di Semua Provinsi")
 
-df_komoditas = df[df["Komoditas"] == komoditas].groupby("Tahun").agg({
-    "produksi": "sum", 
-    "konsumsi (ton)": "sum"
-}).reset_index()
+df_komoditas = df[df["Komoditas"] == komoditas]
 
 fig, ax = plt.subplots()
-ax.plot(df_komoditas["Tahun"], df_komoditas["produksi"], marker="o", label="Total Produksi")
-ax.plot(df_komoditas["Tahun"], df_komoditas["konsumsi (ton)"], marker="s", label="Total Konsumsi")
-ax.set_ylabel("Jumlah (ton)")
-ax.set_title(f"Total Produksi vs Konsumsi {komoditas} (Semua Provinsi)")
-ax.legend()
+
+# Plot satu garis per provinsi
+for prov in df_komoditas["Provinsi"].unique():
+    df_prov = df_komoditas[df_komoditas["Provinsi"] == prov]
+    ax.plot(df_prov["Tahun"], df_prov["Stok"], marker="o", label=prov)
+
+ax.axhline(0, color="black", linestyle="--")
+ax.set_ylabel("Surplus / Defisit (ton)")
+ax.set_title(f"Tren Surplus/Defisit {komoditas} di Semua Provinsi")
+ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # Legend di luar biar tidak nutupin grafik
 st.pyplot(fig)
 
 # =========================================================
