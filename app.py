@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 # =========================================================
 # 1. Konfigurasi Awal
@@ -23,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title">📊 Dashboard Prediksi Produksi & Konsumsi Pangan</p>', unsafe_allow_html=True)
+st.markdown('<p class="title">📊 Dashboard Prediksi Produksi & Konsumsi Pangan (2018–2028)</p>', unsafe_allow_html=True)
 
 # =========================================================
 # 2. Load Data
@@ -81,19 +82,20 @@ with col1:
 with col2:
     fig, ax = plt.subplots()
 
-    # Bikin stok jadi absolut biar semua batang ke atas
+    # Semua batang ke atas (pakai absolute value)
     stok_abs = df_filtered["Stok"].abs()
     colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
 
-    bars = ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
+    ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
     ax.set_ylabel("Stok (Absolut)")
     ax.set_title("Stok (Surplus/Defisit)")
 
-    # Tambahkan label nilai asli (bisa negatif atau positif) di atas batang
-    for bar, value in zip(bars, df_filtered["Stok"]):
-        ax.text(bar.get_x() + bar.get_width() / 2, 
-                bar.get_height() + (0.02 * max(stok_abs)), 
-                f"{value:,}", ha="center", va="bottom", fontsize=8)
+    # Tambahkan legend untuk keterangan warna
+    legend_elements = [
+        Patch(facecolor='green', label='Surplus'),
+        Patch(facecolor='red', label='Defisit')
+    ]
+    ax.legend(handles=legend_elements, loc="upper right")
 
     st.pyplot(fig)
 
