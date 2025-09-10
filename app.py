@@ -54,50 +54,53 @@ df = load_data()
 # =========================================================
 # 3. Sidebar Filter
 # =========================================================
-provinsi = st.sidebar.selectbox("📍 Pilih Provinsi", sorted(df["Provinsi"].unique()))
+provinsi_options = ["Semua Provinsi"] + sorted(df["Provinsi"].unique())
+provinsi = st.sidebar.selectbox("📍 Pilih Provinsi", provinsi_options)
 komoditas = st.sidebar.selectbox("🌾 Pilih Komoditas", sorted(df["Komoditas"].unique()))
 tahun_options = ["Semua Tahun"] + sorted(df["Tahun"].unique().astype(str).tolist())
 tahun = st.sidebar.selectbox("📅 Pilih Tahun", tahun_options)
 
-df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)]
+# Filter data
+if provinsi != "Semua Provinsi":
+    df_filtered = df[(df["Provinsi"] == provinsi) & (df["Komoditas"] == komoditas)]
+else:
+    df_filtered = df[df["Komoditas"] == komoditas]
+
 if tahun != "Semua Tahun":
     df_filtered = df_filtered[df_filtered["Tahun"] == int(tahun)]
 
 # =========================================================
-# 4. Visualisasi (Produksi & Konsumsi + Stok)
+# 4. Visualisasi
 # =========================================================
-st.subheader(f"📍 Data {komoditas} di {provinsi}")
+if provinsi != "Semua Provinsi":
+    st.subheader(f"📍 Data {komoditas} di {provinsi}")
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-with col1:
-    fig, ax = plt.subplots()
-    ax.plot(df_filtered["Tahun"], df_filtered["produksi"], marker="o", label="Produksi")
-    ax.plot(df_filtered["Tahun"], df_filtered["konsumsi (ton)"], marker="s", label="Konsumsi")
-    ax.set_ylabel("Jumlah (ton)")
-    ax.set_title("Produksi vs Konsumsi")
-    ax.legend()
-    st.pyplot(fig)
+    with col1:
+        fig, ax = plt.subplots()
+        ax.plot(df_filtered["Tahun"], df_filtered["produksi"], marker="o", label="Produksi")
+        ax.plot(df_filtered["Tahun"], df_filtered["konsumsi (ton)"], marker="s", label="Konsumsi")
+        ax.set_ylabel("Jumlah (ton)")
+        ax.set_title("Produksi vs Konsumsi")
+        ax.legend()
+        st.pyplot(fig)
 
-with col2:
-    fig, ax = plt.subplots()
+    with col2:
+        fig, ax = plt.subplots()
+        stok_abs = df_filtered["Stok"].abs()
+        colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
 
-    # Semua batang ke atas (pakai absolute value)
-    stok_abs = df_filtered["Stok"].abs()
-    colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
+        ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
+        ax.set_ylabel("Stok (Absolut)")
+        ax.set_title("Stok (Surplus/Defisit)")
 
-    ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
-    ax.set_ylabel("Stok (Absolut)")
-    ax.set_title("Stok (Surplus/Defisit)")
-
-    # Tambahkan legend untuk keterangan warna
-    legend_elements = [
-        Patch(facecolor='green', label='Surplus'),
-        Patch(facecolor='red', label='Defisit')
-    ]
-    ax.legend(handles=legend_elements, loc="upper right")
-
-    st.pyplot(fig)
+        legend_elements = [
+            Patch(facecolor='green', label='Surplus'),
+            Patch(facecolor='red', label='Defisit')
+        ]
+        ax.legend(handles=legend_elements, loc="upper right")
+        st.pyplot(fig)
 
 # =========================================================
 # 5. Plot Surplus/Defisit Semua Provinsi
@@ -107,8 +110,6 @@ st.subheader(f"📊 Tren Surplus/Defisit {komoditas} di Semua Provinsi")
 df_komoditas = df[df["Komoditas"] == komoditas]
 
 fig, ax = plt.subplots()
-
-# Plot satu garis per provinsi
 for prov in df_komoditas["Provinsi"].unique():
     df_prov = df_komoditas[df_komoditas["Provinsi"] == prov]
     ax.plot(df_prov["Tahun"], df_prov["Stok"], marker="o", label=prov)
@@ -116,11 +117,11 @@ for prov in df_komoditas["Provinsi"].unique():
 ax.axhline(0, color="black", linestyle="--")
 ax.set_ylabel("Surplus / Defisit (ton)")
 ax.set_title(f"Tren Surplus/Defisit {komoditas} di Semua Provinsi")
-ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # Legend di luar biar tidak nutupin grafik
+ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 st.pyplot(fig)
 
 # =========================================================
 # 6. Tabel Data
 # =========================================================
 st.subheader("📋 Tabel Data")
-st.dataframe(df_filtered[["Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]], use_container_width=True)
+st.dataframe(df_filtered[["Provinsi", "Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]], use_container_width=True)
