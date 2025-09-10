@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="title">📊 Dashboard Prediksi Produksi & Konsumsi Pangan (2018–2028)</p>', unsafe_allow_html=True)
+st.markdown('<p class="title">📊 Dashboard Prediksi Produksi & Konsumsi Pangan</p>', unsafe_allow_html=True)
 
 # =========================================================
 # 2. Load Data
@@ -37,13 +37,15 @@ def load_data():
     # Data prediksi 2024–2028
     df_forecast = pd.read_excel("Forecast_2024_2028_Detail_PerKomoditas (5).xlsx")
 
-    # Samakan kolom
+    # Hitung stok
     df_hist["Stok"] = df_hist["produksi"] - df_hist["konsumsi (ton)"]
     df_hist["Status"] = df_hist["Stok"].apply(lambda x: "Surplus" if x >= 0 else "Defisit")
 
-    df_all = pd.concat([df_hist[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]],
-                        df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]]],
-                       ignore_index=True)
+    df_all = pd.concat([
+        df_hist[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]],
+        df_forecast[["Provinsi", "Tahun", "Komoditas", "produksi", "konsumsi (ton)", "Stok", "Status"]]
+    ], ignore_index=True)
+
     return df_all
 
 df = load_data()
@@ -78,10 +80,21 @@ with col1:
 
 with col2:
     fig, ax = plt.subplots()
-    ax.bar(df_filtered["Tahun"], df_filtered["Stok"], color=["green" if s == "Surplus" else "red" for s in df_filtered["Status"]])
-    ax.axhline(0, color="black", linestyle="--")
-    ax.set_ylabel("Stok")
+
+    # Bikin stok jadi absolut biar semua batang ke atas
+    stok_abs = df_filtered["Stok"].abs()
+    colors = ["green" if s == "Surplus" else "red" for s in df_filtered["Status"]]
+
+    bars = ax.bar(df_filtered["Tahun"], stok_abs, color=colors)
+    ax.set_ylabel("Stok (Absolut)")
     ax.set_title("Stok (Surplus/Defisit)")
+
+    # Tambahkan label nilai asli (bisa negatif atau positif) di atas batang
+    for bar, value in zip(bars, df_filtered["Stok"]):
+        ax.text(bar.get_x() + bar.get_width() / 2, 
+                bar.get_height() + (0.02 * max(stok_abs)), 
+                f"{value:,}", ha="center", va="bottom", fontsize=8)
+
     st.pyplot(fig)
 
 # =========================================================
@@ -89,7 +102,10 @@ with col2:
 # =========================================================
 st.subheader(f"📊 Tren Produksi dan Konsumsi {komoditas} di Semua Provinsi")
 
-df_komoditas = df[df["Komoditas"] == komoditas].groupby("Tahun").agg({"produksi": "sum", "konsumsi (ton)": "sum"}).reset_index()
+df_komoditas = df[df["Komoditas"] == komoditas].groupby("Tahun").agg({
+    "produksi": "sum", 
+    "konsumsi (ton)": "sum"
+}).reset_index()
 
 fig, ax = plt.subplots()
 ax.plot(df_komoditas["Tahun"], df_komoditas["produksi"], marker="o", label="Total Produksi")
@@ -104,4 +120,3 @@ st.pyplot(fig)
 # =========================================================
 st.subheader("📋 Tabel Data")
 st.dataframe(df_filtered[["Tahun", "produksi", "konsumsi (ton)", "Stok", "Status"]], use_container_width=True)
-
